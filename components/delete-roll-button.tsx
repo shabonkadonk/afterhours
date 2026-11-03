@@ -13,14 +13,14 @@ export function DeleteRollButton({ rollId, rollName, photoCount, ownerId, classN
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
 
-  if (configured && user && ownerId && ownerId !== user.id) return null;
-
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
+
+  if (configured && user && ownerId && ownerId !== user.id) return null;
 
   async function confirmDelete() {
     setError("");
