@@ -39,7 +39,7 @@ export function DeleteRollButton({ rollId, rollName, photoCount, ownerId, classN
       <Trash2 size={14}/><span>DELETE ROLL</span>
     </button>
     {open&&<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-5 backdrop-blur-sm" onMouseDown={(event)=>{if(event.target===event.currentTarget)setOpen(false);}}>
-      <section role="alertdialog" aria-modal="true" aria-labelledby="delete-roll-title" aria-describedby="delete-roll-description" className="w-full max-w-[430px] border border-white/15 bg-[#1b1916] p-5 shadow-2xl sm:p-7">
+      <section role="alertdialog" aria-modal="true" aria-labelledby="delete-roll-title" aria-describedby="delete-roll-description" className="flow-panel w-full max-w-[430px] border border-white/15 bg-[#1b1916] p-5 shadow-2xl sm:p-7">
         <p className="eyebrow flex items-center gap-2 text-[#cf766b]"><Trash2 size={12}/> REMOVE THIS ROLL</p>
         {error && <p role="alert" className="mt-4 border-l border-[#a33a32]/60 pl-3 text-xs leading-5 text-[#e08478]">{error}</p>}
         <h2 id="delete-roll-title" className="mt-4 font-display text-3xl leading-tight">Delete “{rollName}”?</h2>

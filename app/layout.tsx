@@ -1,13 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { DM_Mono, DM_Sans, DM_Serif_Display } from "next/font/google";
 import { AppProvider } from "@/components/app-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { SiteHeader } from "@/components/site-header";
+import { ScrollMotion } from "@/components/scroll-motion";
 import "./globals.css";
 
+const dmSans = DM_Sans({ variable: "--font-ui", subsets: ["latin"] });
+const dmSerif = DM_Serif_Display({ variable: "--font-editorial", weight: "400", subsets: ["latin"] });
+const dmMono = DM_Mono({ variable: "--font-label", weight: "400", subsets: ["latin"] });
+
 export const metadata: Metadata = {
-  title: "AFTERHOURS — Keep the night.",
-  description: "A shared photo roll for the nights you want to remember.",
-  applicationName: "AFTERHOURS",
+  title: "Afterhours — Shared photo rolls",
+  description: "A shared camera roll for nights out. Add photos through the night and open them together tomorrow.",
+  applicationName: "Afterhours",
 };
 
 export const viewport: Viewport = {
@@ -19,7 +25,8 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>
+      <body className={`${dmSans.variable} ${dmSerif.variable} ${dmMono.variable}`}>
+        <ScrollMotion />
         <AuthProvider>
           <AppProvider>
             <SiteHeader />
