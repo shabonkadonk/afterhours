@@ -6,7 +6,9 @@ export const maxDuration = 60;
 
 const MODEL = "fal-ai/flux-2/flash/edit";
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
-const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+// Base64 encoding expands the image by roughly one third. Keep the binary
+// limit low enough that the JSON response stays under Vercel's 4.5 MB cap.
+const MAX_OUTPUT_BYTES = 3 * 1024 * 1024;
 const Y2K_PROMPT = "Restyle this exact photo as a candid snapshot taken with an early-2000s compact CCD digital camera and a small built-in straight-on flash. Preserve the same people and identities, facial features, exact pose, clothing, objects, room, background, and full framing. Keep the entire rectangular scene and original aspect ratio. Use harsh direct flash on the foreground, natural warm skin, slightly cool ambient shadows, moderate contrast, imperfect consumer-camera color, subtle CCD noise, and authentic dated point-and-shoot character. Keep whites detailed and exposure balanced. Do not crop, replace the background, add text or a date stamp, blur, or create an oval spotlight, vignette, radial gradient, cutout, halo, artificial studio lighting, or blown highlights.";
 
 function hasSameOrigin(request: NextRequest) {
