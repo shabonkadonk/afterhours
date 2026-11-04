@@ -3,9 +3,9 @@ import { ArrowDown, ArrowUpRight, Camera, Circle, Disc3, Download, Sparkles } fr
 import { InstallGuideLink } from "@/components/install-guide-link";
 
 const moments = [
-  { src: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=900&q=85", alt: "Friends beneath a night sky", label: "01:18 AM · SOMEWHERE OUTSIDE" },
-  { src: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=900&q=85", alt: "A crowded dance floor under red lights", label: "11:42 PM · NO PHONES OUT" },
-  { src: "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=900&q=85", alt: "A friend smiling in warm light", label: "12:06 AM · THE GOOD PART" },
+  { src: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=650&q=78", alt: "Friends beneath a night sky", label: "01:18 AM · SOMEWHERE OUTSIDE" },
+  { src: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=500&q=78", alt: "A crowded dance floor under red lights", label: "11:42 PM · NO PHONES OUT" },
+  { src: "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=440&q=78", alt: "A friend smiling in warm light", label: "12:06 AM · THE GOOD PART" },
 ];
 
 export default function Home() {

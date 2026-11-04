@@ -262,10 +262,45 @@ function compressPhoto(file: File, filter: FilterPreset, stampYear: "current" | 
   });
 }
 
-function finishFalPhoto(dataUrl: string, file: File, stampYear: "current" | "2006" | null): Promise<string> {
+function sampleLuminance(image: CanvasImageSource): number {
+  const sample = document.createElement("canvas");
+  sample.width = sample.height = 24;
+  const context = sample.getContext("2d", { willReadFrequently: true });
+  if (!context) return 0;
+  context.drawImage(image, 0, 0, 24, 24);
+  const { data } = context.getImageData(0, 0, 24, 24);
+  let total = 0;
+  for (let index = 0; index < data.length; index += 4) total += .299 * data[index] + .587 * data[index + 1] + .114 * data[index + 2];
+  return total / (data.length / 4);
+}
+
+function dataUrlLuminance(dataUrl: string): Promise<number> {
+  return new Promise((resolve) => {
+    const source = new Image();
+    source.onload = () => resolve(sampleLuminance(source));
+    source.onerror = () => resolve(0);
+    source.src = dataUrl;
+  });
+}
+
+function finishFalPhoto(dataUrl: string, sourceData: string, file: File, stampYear: "current" | "2006" | null): Promise<string> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => {
+    image.onload = async () => {
+      try {
+      const [editedLuminance, originalLuminance] = await Promise.all([
+        Promise.resolve(sampleLuminance(image)),
+        dataUrlLuminance(sourceData),
+      ]);
+      // FLUX occasionally returns a nearly black frame for otherwise visible
+      // input. Keep that frame usable by falling back to the local Y2K recipe.
+      const almostBlack = editedLuminance < 4 && originalLuminance > 4;
+      const severelyUnderexposed = originalLuminance > 35 && editedLuminance < Math.max(8, originalLuminance * .12);
+      if (almostBlack || severelyUnderexposed) {
+        const fallback = await compressPhoto(file, FILTERS[1], stampYear, false);
+        resolve(fallback.data);
+        return;
+      }
       const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(image.naturalWidth * scale);
@@ -283,6 +318,9 @@ function finishFalPhoto(dataUrl: string, file: File, stampYear: "current" | "200
       }
       if (output.length > 1_100_000) { reject(new Error("The edited photo is too large for local browser storage.")); return; }
       resolve(output);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error("Could not prepare FLUX’s edited image."));
+      }
     };
     image.onerror = () => reject(new Error("Could not read FLUX’s edited image."));
     image.src = dataUrl;
@@ -398,7 +436,7 @@ export default function CapturePage() {
         const useFal=falStatus==="connected"&&filterId==="y2k";
         const source=await compressPhoto(files[index],activeFilter,useFal?null:(dateStampEnabled?dateStampYear:null),useFal);
         const editedImage=useFal?await editPhotoWithFal(source.data,source.width,source.height):source.data;
-        const editedData=useFal?await finishFalPhoto(editedImage,files[index],dateStampEnabled?dateStampYear:null):editedImage;
+        const editedData=useFal?await finishFalPhoto(editedImage,source.data,files[index],dateStampEnabled?dateStampYear:null):editedImage;
         const thumbnailSrc=await createPhotoThumbnail(editedData);
         additions.push({uploadId:createPhotoId(),src:editedData,thumbnailSrc,caption:caption.trim(),filter:activeFilter.label,filterVersion:5,dateStampYear:dateStampEnabled?dateStampYear:undefined});
         preparedUpload.current = { key, additions: [...additions] };

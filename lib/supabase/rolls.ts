@@ -62,7 +62,12 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
   const signedByPath = new Map<string, string>();
   const thumbnailByPath = new Map<string, string>();
   if (revealedPaths.length) {
-    const { data: signed, error } = await supabase.storage.from("roll-photos").createSignedUrls(revealedPaths, 60 * 60);
+    const thumbnailPaths = revealedPaths.map(thumbnailPath);
+    const [signedResult, thumbnailResult] = await Promise.all([
+      supabase.storage.from("roll-photos").createSignedUrls(revealedPaths, 60 * 60),
+      supabase.storage.from("roll-photos").createSignedUrls(thumbnailPaths, 60 * 60),
+    ]);
+    const { data: signed, error } = signedResult;
     // Signing a photo is a display concern, not a roll-data or upload failure.
     // Match successful responses by request order; Storage can return a per-file
     // error while still returning valid links for other photos in the batch.
@@ -76,8 +81,7 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
       });
     }
 
-    const thumbnailPaths = revealedPaths.map(thumbnailPath);
-    const { data: thumbnails, error: thumbnailError } = await supabase.storage.from("roll-photos").createSignedUrls(thumbnailPaths, 60 * 60);
+    const { data: thumbnails, error: thumbnailError } = thumbnailResult;
     if (!thumbnailError) {
       thumbnails?.forEach((item) => {
         if (item.path && item.signedUrl && !item.error) thumbnailByPath.set(item.path, item.signedUrl);
