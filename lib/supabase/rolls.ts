@@ -12,6 +12,10 @@ function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "?";
 }
 
+function thumbnailPath(objectPath: string) {
+  return objectPath.replace(/\.jpg$/i, ".thumb.jpg");
+}
+
 export function createPhotoId() {
   const cryptoApi = globalThis.crypto;
   if (typeof cryptoApi?.randomUUID === "function") return cryptoApi.randomUUID();
@@ -56,6 +60,7 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
 
   const revealedPaths = (photos ?? []).filter((photo) => rolls?.find((roll) => roll.id === photo.roll_id)?.status === "revealed").map((photo) => photo.object_path as string);
   const signedByPath = new Map<string, string>();
+  const thumbnailByPath = new Map<string, string>();
   if (revealedPaths.length) {
     const { data: signed, error } = await supabase.storage.from("roll-photos").createSignedUrls(revealedPaths, 60 * 60);
     // Signing a photo is a display concern, not a roll-data or upload failure.
@@ -68,6 +73,14 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
         const path = revealedPaths[index];
         if (path && item.signedUrl) signedByPath.set(path, item.signedUrl);
         else if (item.error) console.warn(`Could not sign revealed photo ${path ?? index}:`, item.error);
+      });
+    }
+
+    const thumbnailPaths = revealedPaths.map(thumbnailPath);
+    const { data: thumbnails, error: thumbnailError } = await supabase.storage.from("roll-photos").createSignedUrls(thumbnailPaths, 60 * 60);
+    if (!thumbnailError) {
+      thumbnails?.forEach((item) => {
+        if (item.path && item.signedUrl && !item.error) thumbnailByPath.set(item.path, item.signedUrl);
       });
     }
 
@@ -87,9 +100,11 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
     const people = (members ?? []).filter((member) => member.roll_id === row.id);
     const rollPhotos = (photos ?? []).filter((photo) => photo.roll_id === row.id).map((photo) => {
       const uploader = people.find((member) => member.user_id === photo.uploaded_by)?.display_name || "A friend";
+      const objectPath = photo.object_path as string;
       return {
         id: photo.id as string,
-        src: signedByPath.get(photo.object_path as string) ?? "",
+        src: signedByPath.get(objectPath) ?? "",
+        thumbnailSrc: thumbnailByPath.get(thumbnailPath(objectPath)),
         caption: photo.caption as string,
         by: photo.uploaded_by === user.id ? "You" : uploader,
         at: photo.created_at as string,
@@ -169,6 +184,23 @@ export async function addCloudPhotos(supabase: SupabaseClient, user: User, rollI
     const existingObject = uploadError && /already exists/i.test(uploadError.message);
     if (uploadError && !existingObject) throw new Error(`Photo storage upload was rejected (account recognized as ${isOwner ? "owner" : "member"}; roll active; ${roll.photo_count}/${roll.photo_limit} frames used): ${backendError(uploadError).message}`);
 
+    const thumbPath = thumbnailPath(path);
+    if (item.thumbnailSrc) {
+      try {
+        const thumbnailResponse = await fetch(item.thumbnailSrc);
+        if (!thumbnailResponse.ok) throw new Error("Could not prepare the gallery thumbnail.");
+        const thumbnailBlob = await thumbnailResponse.blob();
+        const { error: thumbnailUploadError } = await supabase.storage.from("roll-photos").upload(thumbPath, thumbnailBlob, {
+          contentType: "image/jpeg", upsert: false,
+        });
+        if (thumbnailUploadError && !/already exists/i.test(thumbnailUploadError.message)) {
+          console.warn("Could not save the gallery thumbnail; the original photo will be used instead.", thumbnailUploadError.message);
+        }
+      } catch (error) {
+        console.warn("Could not prepare the gallery thumbnail; the original photo will be used instead.", error);
+      }
+    }
+
     const { error: insertError } = await supabase.from("photos").insert({
       id: photoId,
       roll_id: rollId,
@@ -180,7 +212,7 @@ export async function addCloudPhotos(supabase: SupabaseClient, user: User, rollI
       date_stamp_year: item.dateStampYear ?? null,
     });
     if (insertError) {
-      await supabase.storage.from("roll-photos").remove([path]);
+      await supabase.storage.from("roll-photos").remove([path, thumbPath]);
       throw new Error(`Photo record insert was rejected: ${backendError(insertError).message}`);
     }
   }
@@ -191,7 +223,7 @@ export async function deleteCloudRoll(supabase: SupabaseClient, rollId: string) 
   if (photoError) throw backendError(photoError);
   const paths = (photos ?? []).map((photo) => photo.object_path as string);
   if (paths.length) {
-    const { error } = await supabase.storage.from("roll-photos").remove(paths);
+    const { error } = await supabase.storage.from("roll-photos").remove([...paths, ...paths.map(thumbnailPath)]);
     if (error) throw backendError(error);
   }
   const { error } = await supabase.from("rolls").delete().eq("id", rollId);

@@ -117,7 +117,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
       if (roll.id !== rollId || roll.status !== "active" || roll.photos.length >= roll.photoLimit) return roll;
       const now = Date.now();
       const available = Math.max(0, roll.photoLimit-roll.photos.length);
-      const additions = photos.slice(0,available).map((photo,index)=>({
+      const additions = photos.slice(0,available).map(({ thumbnailSrc: _thumbnailSrc, ...photo },index)=>({
         ...photo, id: `photo-${(now+index).toString(36)}`, at: new Date(now+index).toISOString(), by: "You",
       }));
       return { ...roll, photos: [...roll.photos, ...additions] };

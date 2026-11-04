@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CalendarClock, Check, ImagePlus, Upload, X } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useApp } from "@/components/app-provider";
+import { useAuth } from "@/components/auth-provider";
 import { LocalDemoNote, PhotoCount } from "@/components/roll-ui";
 import { editPhotoWithFal, isFalConfigured } from "@/lib/fal-client";
 import { createPhotoId } from "@/lib/supabase/rolls";
@@ -288,15 +289,34 @@ function finishFalPhoto(dataUrl: string, file: File, stampYear: "current" | "200
   });
 }
 
+function createPhotoThumbnail(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, 560 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) { resolve(""); return; }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", .72));
+    };
+    image.onerror = () => resolve("");
+    image.src = dataUrl;
+  });
+}
+
 export default function CapturePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { rolls, ready, addPhotos } = useApp();
+  const { configured, user } = useAuth();
   const roll = rolls.find((item)=>item.id===id);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const previewUrls = useRef<string[]>([]);
-  const preparedUpload = useRef<{ key: string; additions: { uploadId: string; src: string; caption: string; filter: string; filterVersion: number; dateStampYear?: "current" | "2006" }[] } | null>(null);
+  const preparedUpload = useRef<{ key: string; additions: { uploadId: string; src: string; thumbnailSrc: string; caption: string; filter: string; filterVersion: number; dateStampYear?: "current" | "2006" }[] } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [filterId, setFilterId] = useState("y2k");
   const [dateStampEnabled, setDateStampEnabled] = useState(true);
@@ -304,13 +324,34 @@ export default function CapturePage() {
   const [caption, setCaption] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingStage, setSavingStage] = useState<"processing" | "uploading">("processing");
   const [progress, setProgress] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
   const [falStatus, setFalStatus] = useState<"checking" | "connected" | "local">("checking");
   const activeFilter = FILTERS.find((filter)=>filter.id===filterId) ?? FILTERS[0];
   useEffect(()=>()=>{previewUrls.current.forEach((url)=>URL.revokeObjectURL(url));},[]);
   useEffect(()=>{let current=true; void isFalConfigured().then((configured)=>{if(current)setFalStatus(configured?"connected":"local");}); return ()=>{current=false;};},[]);
+  useEffect(()=>{
+    if(!saving) return;
+    const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    const guardNavigation=(event:MouseEvent)=>{
+      if(!(event.target instanceof Element)) return;
+      const anchor=event.target.closest("a[href]");
+      if(!(anchor instanceof HTMLAnchorElement)) return;
+      const destination=new URL(anchor.href,window.location.href);
+      if(destination.origin!==window.location.origin||destination.pathname===window.location.pathname) return;
+      if(!window.confirm("Photos are still being prepared or uploaded. Leave this page?")){
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("beforeunload",beforeUnload);
+    document.addEventListener("click",guardNavigation,true);
+    return ()=>{window.removeEventListener("beforeunload",beforeUnload);document.removeEventListener("click",guardNavigation,true);};
+  },[saving]);
 
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
+    if(saving) return;
     const chosen = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!chosen.length || !roll) return;
@@ -339,26 +380,37 @@ export default function CapturePage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
+    if(saving) return;
     if (!roll || !files.length) { setError("Choose one or more photos or open the camera first."); return; }
     if (roll.photos.length+files.length > roll.photoLimit) { setError("There aren’t enough frames left for this batch. Remove a photo and try again."); return; }
     setSaving(true);
+    setSavingStage("processing");
+    setProgress(0);
+    setProgressPercent(0);
     try {
       const key = JSON.stringify({ roll: roll.id, files: files.map((file) => [file.name, file.size, file.lastModified]), filterId, dateStampEnabled, dateStampYear, caption: caption.trim() });
       const additions = preparedUpload.current?.key === key ? [...preparedUpload.current.additions] : [];
+      setProgress(additions.length);
+      setProgressPercent(Math.round((additions.length/files.length)*82));
       for (let index=additions.length;index<files.length;index+=1) {
         setProgress(index+1);
+        setProgressPercent(Math.round((index/files.length)*82));
         const useFal=falStatus==="connected"&&filterId==="y2k";
         const source=await compressPhoto(files[index],activeFilter,useFal?null:(dateStampEnabled?dateStampYear:null),useFal);
         const editedImage=useFal?await editPhotoWithFal(source.data,source.width,source.height):source.data;
         const editedData=useFal?await finishFalPhoto(editedImage,files[index],dateStampEnabled?dateStampYear:null):editedImage;
-        additions.push({uploadId:createPhotoId(),src:editedData,caption:caption.trim(),filter:activeFilter.label,filterVersion:5,dateStampYear:dateStampEnabled?dateStampYear:undefined});
+        const thumbnailSrc=await createPhotoThumbnail(editedData);
+        additions.push({uploadId:createPhotoId(),src:editedData,thumbnailSrc,caption:caption.trim(),filter:activeFilter.label,filterVersion:5,dateStampYear:dateStampEnabled?dateStampYear:undefined});
         preparedUpload.current = { key, additions: [...additions] };
+        setProgressPercent(Math.round(((index+1)/files.length)*82));
       }
+      setSavingStage("uploading");
       await addPhotos(roll.id,additions);
       preparedUpload.current = null;
+      setProgressPercent(100);
       router.push(`/rolls/${roll.id}`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Couldn’t save that photo. Try again."); setSaving(false);
+      setError(caught instanceof Error ? caught.message : "Couldn’t save that photo. Try again."); setSaving(false); setSavingStage("processing");
     }
   }
 
@@ -376,20 +428,26 @@ export default function CapturePage() {
         <div className={`photo-frame relative aspect-[1.1] border border-white/10 ${files.length?"":"flex items-center justify-center"}`}>
           {files.length ? <><img src={previews[selectedIndex]} alt={`Original preview of ${files[selectedIndex]?.name ?? "your selected photo"}`} className="absolute inset-0 h-full w-full bg-black/30" style={{objectFit:"contain"}}/><div className="absolute inset-x-0 bottom-0 z-[1] flex items-end justify-between bg-gradient-to-t from-black/85 to-transparent px-4 pb-4 pt-12"><div><span className="font-mono text-[9px] tracking-[.12em] text-white/80">ORIGINAL · FRAME {String(selectedIndex+1).padStart(2,"0")}</span><p className="mt-1 max-w-[220px] truncate text-xs text-white/70">{files[selectedIndex]?.name}</p></div><span className="font-mono text-[9px] text-white/75">{files.length} SELECTED</span></div></> : <div className="px-5 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center border border-white/15 text-[#b44f44]"><ImagePlus size={20}/></div><p className="mt-4 font-display text-xl">Choose a few frames.</p><p className="mt-1 text-xs text-[#7f786e]">Select multiple photos at once, up to {roll.photoLimit-roll.photos.length} remaining.</p></div>}
         </div>
-        {files.length>0&&<div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">{files.map((item,index)=><div key={`${item.name}-${item.lastModified}-${index}`} style={{animationDelay:`${Math.min(index*45,270)}ms`}} className={`photo-tile relative aspect-square border ${index===selectedIndex?"border-[#c55448]":"border-white/10"}`}><button type="button" onClick={()=>setSelectedIndex(index)} aria-label={`Preview photo ${index+1}: ${item.name}`} className="photo-frame h-full w-full"><img src={previews[index]} alt="" style={{objectFit:"cover"}}/><span className="absolute bottom-1 left-1 z-[2] bg-black/65 px-1.5 py-0.5 font-mono text-[8px] text-white">{String(index+1).padStart(2,"0")}</span></button><button type="button" onClick={()=>removeFile(index)} aria-label={`Remove photo ${index+1}`} className="absolute -right-1.5 -top-1.5 z-[3] flex h-6 w-6 items-center justify-center border border-white/25 bg-[#171613] text-[#c9c1b4] hover:text-white"><X size={11}/></button></div>)}</div>}
-        <div className="mt-4 grid grid-cols-2 gap-2"><label className="button-primary relative cursor-pointer"><Upload size={14}/> Choose photos<input type="file" accept="image/*" multiple className="absolute inset-0 cursor-pointer opacity-0" onChange={chooseFile}/></label><label className="button-secondary relative cursor-pointer"><ImagePlus size={14}/> Open camera<input type="file" accept="image/*" capture="environment" multiple className="absolute inset-0 cursor-pointer opacity-0" onChange={chooseFile}/></label></div>
-        <fieldset className="mt-6"><legend className="eyebrow">PICK A LOOK <span className="ml-1 text-[#6d675e]">· REVEALS WHEN THE ROLL ENDS</span></legend><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{FILTERS.map((filter)=><button type="button" key={filter.id} onClick={()=>setFilterId(filter.id)} aria-pressed={filter.id===filterId} className={`choice-card border p-1.5 text-left transition sm:p-2 ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="mb-2 block aspect-[1.7]" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div><p className="mt-3 border-l border-[#a33a32]/60 pl-3 font-mono text-[8px] leading-4 tracking-[.04em] text-[#8c8377]">{filterId==="y2k"?"Y2K USES FAL.AI FLUX.2 Flash TO EDIT THE FULL PHOTO WITH A CCD-ERA DIRECT-FLASH LOOK. NO OVAL MASK OR VIGNETTE.":"THE ORIGINAL STAYS IN PREVIEW. YOUR SELECTED LOOK WILL APPEAR AFTER THE ROLL ENDS."}</p></fieldset>
+        {files.length>0&&<div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">{files.map((item,index)=><div key={`${item.name}-${item.lastModified}-${index}`} style={{animationDelay:`${Math.min(index*45,270)}ms`}} className={`photo-tile relative aspect-square border ${index===selectedIndex?"border-[#c55448]":"border-white/10"}`}><button type="button" disabled={saving} onClick={()=>setSelectedIndex(index)} aria-label={`Preview photo ${index+1}: ${item.name}`} className="photo-frame h-full w-full disabled:cursor-wait"><img src={previews[index]} alt="" style={{objectFit:"cover"}}/><span className="absolute bottom-1 left-1 z-[2] bg-black/65 px-1.5 py-0.5 font-mono text-[8px] text-white">{String(index+1).padStart(2,"0")}</span></button><button type="button" disabled={saving} onClick={()=>removeFile(index)} aria-label={`Remove photo ${index+1}`} className="absolute -right-1.5 -top-1.5 z-[3] flex h-7 w-7 items-center justify-center border border-white/25 bg-[#171613] text-[#c9c1b4] hover:text-white disabled:opacity-50"><X size={11}/></button></div>)}</div>}
+        <div className="mt-4 grid grid-cols-2 gap-2"><label className={`button-primary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><Upload size={14}/> Choose photos<input type="file" accept="image/*" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label><label className={`button-secondary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><ImagePlus size={14}/> Open camera<input type="file" accept="image/*" capture="environment" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label></div>
+        <fieldset disabled={saving} className="mt-6 disabled:opacity-70"><legend className="eyebrow">PICK A LOOK <span className="ml-1 text-[#6d675e]">· REVEALS WHEN THE ROLL ENDS</span></legend><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{FILTERS.map((filter)=><button type="button" key={filter.id} onClick={()=>setFilterId(filter.id)} aria-pressed={filter.id===filterId} className={`choice-card min-h-[72px] border p-1.5 text-left transition sm:p-2 ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="mb-2 block aspect-[1.7]" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div><p className="mt-3 border-l border-[#a33a32]/60 pl-3 font-mono text-[8px] leading-4 tracking-[.04em] text-[#8c8377]">{filterId==="y2k"?"Y2K USES FAL.AI FLUX.2 Flash TO EDIT THE FULL PHOTO WITH A CCD-ERA DIRECT-FLASH LOOK. NO OVAL MASK OR VIGNETTE.":"THE ORIGINAL STAYS IN PREVIEW. YOUR SELECTED LOOK WILL APPEAR AFTER THE ROLL ENDS."}</p></fieldset>
         <section className="mt-6 border border-white/10 bg-[#201d19] p-3 sm:p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center border border-[#d7963a]/35 text-[#efb653]"><CalendarClock size={16}/></span><div><p className="eyebrow">CYBERSHOT DATE + TIME</p><p className="mt-1 text-[10px] leading-4 text-[#8c8377]">Amber timestamp, burned into each final frame.</p></div></div>
-            <button type="button" aria-pressed={dateStampEnabled} onClick={()=>setDateStampEnabled((current)=>!current)} className={`shrink-0 border px-3 py-2 font-mono text-[9px] tracking-[.12em] transition ${dateStampEnabled?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>{dateStampEnabled?"STAMP ON":"STAMP OFF"}</button>
+            <button type="button" disabled={saving} aria-pressed={dateStampEnabled} onClick={()=>setDateStampEnabled((current)=>!current)} className={`min-h-10 shrink-0 border px-3 py-2 font-mono text-[9px] tracking-[.12em] transition disabled:opacity-50 ${dateStampEnabled?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>{dateStampEnabled?"STAMP ON":"STAMP OFF"}</button>
           </div>
-          {dateStampEnabled&&<div className="mt-4 grid grid-cols-2 gap-2"><button type="button" aria-pressed={dateStampYear==="current"} onClick={()=>setDateStampYear("current")} className={`border px-3 py-3 text-left transition ${dateStampYear==="current"?"border-[#d7963a]/50 bg-[#d7963a]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="block font-mono text-[9px] tracking-[.1em] text-[#e9c681]">CURRENT YEAR</span><span className="mt-1 block text-[9px] text-[#81796e]">Keep this year on the stamp</span></button><button type="button" aria-pressed={dateStampYear==="2006"} onClick={()=>setDateStampYear("2006")} className={`border px-3 py-3 text-left transition ${dateStampYear==="2006"?"border-[#d7963a]/50 bg-[#d7963a]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="block font-mono text-[9px] tracking-[.1em] text-[#e9c681]">SET YEAR TO 2006</span><span className="mt-1 block text-[9px] text-[#81796e]">Early-digital-camera nostalgia</span></button></div>}
+        {dateStampEnabled&&<div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={saving} aria-pressed={dateStampYear==="current"} onClick={()=>setDateStampYear("current")} className={`min-h-[60px] border px-3 py-3 text-left transition disabled:opacity-50 ${dateStampYear==="current"?"border-[#d7963a]/50 bg-[#d7963a]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="block font-mono text-[9px] tracking-[.1em] text-[#e9c681]">CURRENT YEAR</span><span className="mt-1 block text-[9px] text-[#81796e]">Keep this year on the stamp</span></button><button type="button" disabled={saving} aria-pressed={dateStampYear==="2006"} onClick={()=>setDateStampYear("2006")} className={`min-h-[60px] border px-3 py-3 text-left transition disabled:opacity-50 ${dateStampYear==="2006"?"border-[#d7963a]/50 bg-[#d7963a]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="block font-mono text-[9px] tracking-[.1em] text-[#e9c681]">SET YEAR TO 2006</span><span className="mt-1 block text-[9px] text-[#81796e]">Early-digital-camera nostalgia</span></button></div>}
           <p className="mt-3 font-mono text-[8px] leading-4 text-[#756e63]">THE IMPRINT IS HIDDEN WITH THE EDITED PHOTO UNTIL THE ROLL REVEALS.</p>
         </section>
-        <label htmlFor="caption" className="eyebrow mt-6 block">CAPTION FOR THESE FRAMES <span className="text-[#6d675e]">(OPTIONAL · SAME ON ALL)</span></label><textarea id="caption" rows={2} maxLength={120} value={caption} onChange={(event)=>setCaption(event.target.value)} placeholder="what were we laughing at?" className="field mt-2 resize-none text-sm"/><div className="mt-1 text-right font-mono text-[8px] text-[#6d675e]">{caption.length}/120</div>
+        <label htmlFor="caption" className="eyebrow mt-6 block">CAPTION FOR THESE FRAMES <span className="text-[#6d675e]">(OPTIONAL · SAME ON ALL)</span></label><textarea id="caption" rows={2} maxLength={120} disabled={saving} value={caption} onChange={(event)=>setCaption(event.target.value)} placeholder="what were we laughing at?" className="field mt-2 resize-none text-sm disabled:opacity-60"/><div className="mt-1 text-right font-mono text-[8px] text-[#6d675e]">{caption.length}/120</div>
         {error && <p role="alert" className="mt-3 border-l-2 border-[#b54b40] pl-3 text-xs text-[#e08478]">{error}</p>}
-        <button type="submit" disabled={!files.length||saving||falStatus==="checking"} className="button-primary mt-4 w-full disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/10 disabled:text-[#777168]">{saving?`Editing frame ${progress} of ${files.length}…`:falStatus==="checking"?"Checking fal.ai setup…":<><Check size={14}/> Add {files.length||"photos"} to the roll <span className="ml-auto font-mono text-[9px] text-white/70">{roll.photos.length+files.length} / {roll.photoLimit}</span></>}</button>
+        {saving && <div role="status" className="mt-4 border border-white/10 bg-[#211e19] p-3">
+          <div className="flex items-center justify-between gap-3"><span className="text-xs text-[#ded8cd]">{savingStage==="uploading"?(configured&&user?"Uploading frames to the shared roll…":"Saving your frames…"):`Preparing frame ${Math.max(1,progress)} of ${files.length}…`}</span><span className="font-mono text-[9px] text-[#8c8377]">{savingStage==="uploading"?"SAVING":`${progressPercent}%`}</span></div>
+          <div role="progressbar" aria-label={savingStage==="uploading"?"Saving photos":"Preparing photos"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={savingStage==="uploading"?undefined:progressPercent} className={`upload-progress mt-3 h-1 ${savingStage==="uploading"?"upload-progress--indeterminate":""}`}><div className="upload-progress__bar" style={savingStage==="uploading"?undefined:{width:`${progressPercent}%`}}/></div>
+        </div>}
+        <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 mt-4 border-t border-white/10 bg-[#1a1815]/95 px-4 pb-2 pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0">
+          <button type="submit" disabled={!files.length||saving||falStatus==="checking"} className="button-primary min-h-12 w-full disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/10 disabled:text-[#777168] disabled:opacity-50">{saving?"Working on your photos…":falStatus==="checking"?"Checking fal.ai setup…":<><Check size={14}/> {files.length?`Add ${files.length} ${files.length===1?"photo":"photos"} to the roll`:"Choose photos to add"} <span className="ml-auto font-mono text-[9px] text-white/70">{roll.photos.length+files.length} / {roll.photoLimit}</span></>}</button>
+        </div>
         <p className="mt-3 text-center font-mono text-[8px] leading-4 text-[#716b61]">{falStatus==="connected"?"Y2K EDITED WITH FAL.AI FLUX.2 Flash · AMBER SEVEN-SEGMENT DATE IMPRINT":"BASIC CAMERA LOOK · SAVED ON THIS DEVICE ONLY"}</p>
       </form>
     </div>

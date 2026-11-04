@@ -14,12 +14,27 @@ export const metadata: Metadata = {
   title: "Afterhours — Shared photo rolls",
   description: "A shared camera roll for nights out. Add photos through the night and open them together tomorrow.",
   applicationName: "Afterhours",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Afterhours",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/afterhours.svg", type: "image/svg+xml" },
+      { url: "/icons/afterhours-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/afterhours-180.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
   themeColor: "#141311",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
