@@ -3,14 +3,15 @@
 import QRCode from "qrcode";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Copy, QrCode, RefreshCw, Share2 } from "lucide-react";
+import { Copy, QrCode, RefreshCw, Share2, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { rotateCloudInvitation, setCloudInvitationEnabled } from "@/lib/supabase/rolls";
 
 export function InvitationManager({
   rollId,
-}: { rollId: string }) {
+  compact = false,
+}: { rollId: string; compact?: boolean }) {
   const { user } = useAuth();
   const [token, setToken] = useState("");
   const [code, setCode] = useState("");
@@ -20,6 +21,7 @@ export function InvitationManager({
   const [busy, setBusy] = useState(false);
   const [loadingInvite, setLoadingInvite] = useState(true);
   const [origin, setOrigin] = useState("");
+  const [open, setOpen] = useState(false);
   const link = origin ? `${origin}/join/${token}` : "";
 
   useEffect(() => { setOrigin(window.location.origin); }, []);
@@ -93,7 +95,7 @@ export function InvitationManager({
     await copy(link, "Invitation link");
   }
 
-  return <section className="mt-6 border border-white/10 bg-[#191714] p-4 sm:p-5" aria-labelledby={`invite-heading-${rollId}`}>
+  const invitationCard = <section className={`border border-white/10 bg-[#191714] p-4 sm:p-5 ${compact ? "mobile-invite-card" : "mt-6"}`} aria-labelledby={`invite-heading-${rollId}`}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><p className="eyebrow flex items-center gap-2"><QrCode size={13} className="text-[#b54b40]"/> HOST INVITATION</p><h2 id={`invite-heading-${rollId}`} className="mt-2 font-display text-2xl">Bring the crew in.</h2></div>
       <span className={`border px-2 py-1 font-mono text-[8px] tracking-[.1em] ${active ? "border-[#74916b]/35 text-[#a8c294]" : "border-white/15 text-[#817a70]"}`}>{active ? "OPEN" : "PAUSED"}</span>
@@ -118,4 +120,15 @@ export function InvitationManager({
     {loadingInvite && <p className="mt-3 text-xs text-[#8d867a]">Loading the invitation…</p>}
     {message && <p role="status" className="mt-3 text-xs text-[#cfc2a9]">{message}</p>}
   </section>;
+
+  if (!compact) return invitationCard;
+  return <>
+    <button type="button" onClick={() => setOpen(true)} className="mobile-roll-action"><Share2 size={17}/><span>Invite</span></button>
+    {open && <div className="mobile-roll-sheet-backdrop mobile-roll-sheet-backdrop--invite" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-label="Roll invitation" className="mobile-roll-sheet mobile-roll-sheet--invite">
+        <div className="mobile-roll-sheet__heading"><p className="eyebrow">BRING THE CREW IN</p><button type="button" onClick={() => setOpen(false)} aria-label="Close invitation" className="mobile-roll-sheet__close"><X size={19}/></button></div>
+        <div className="mobile-roll-sheet__content">{invitationCard}</div>
+      </section>
+    </div>}
+  </>;
 }

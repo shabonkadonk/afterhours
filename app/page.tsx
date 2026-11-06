@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUpRight, Camera, Circle, Disc3, Download, Sparkles } from "lucide-react";
 import { InstallGuideLink } from "@/components/install-guide-link";
+import { HomeExperience } from "@/components/home-experience";
 
 const moments = [
   { src: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=650&q=78", alt: "Friends beneath a night sky", label: "01:18 AM · SOMEWHERE OUTSIDE" },
@@ -8,7 +9,7 @@ const moments = [
   { src: "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=440&q=78", alt: "A friend smiling in warm light", label: "12:06 AM · THE GOOD PART" },
 ];
 
-export default function Home() {
+function BrowserHome() {
   return (
     <main className="overflow-hidden pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <section className="relative mx-auto max-w-[1440px] px-4 pb-8 pt-6 sm:px-10 sm:pb-16 sm:pt-9 lg:px-16 lg:pb-20 lg:pt-14">
@@ -71,4 +72,8 @@ export default function Home() {
       <footer className="flex flex-col gap-3 px-5 py-7 text-xs text-[#686258] sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-16"><span>© Afterhours</span><span>A shared camera roll for nights out.</span><InstallGuideLink className="text-[#aaa396] underline decoration-white/20 underline-offset-4 hover:text-white">Install guide</InstallGuideLink></footer>
     </main>
   );
+}
+
+export default function Home() {
+  return <HomeExperience browser={<BrowserHome/>}/>;
 }

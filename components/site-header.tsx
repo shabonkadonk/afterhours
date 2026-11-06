@@ -16,6 +16,7 @@ export function SiteHeader() {
   const isGuest = Boolean(user?.is_anonymous);
   const accountHref = isGuest ? "/login?next=%2Fdashboard" : user ? "/account" : "/login";
   const accountLabel = isGuest ? "Host sign in" : user ? "Account" : "Sign in";
+  if (isInstalled) return null;
   return (
     <>
     <header className="relative z-20 border-b border-white/10 bg-[#141311]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">

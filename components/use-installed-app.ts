@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 export function useInstalledApp() {
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstalled, setIsInstalled] = useState<boolean | null>(null);
 
   useEffect(() => {
     const isStandalone = () =>
@@ -13,8 +13,8 @@ export function useInstalledApp() {
     setIsInstalled(isStandalone());
     const media = window.matchMedia("(display-mode: standalone)");
     const update = () => setIsInstalled(isStandalone());
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
   }, []);
 
   return isInstalled;

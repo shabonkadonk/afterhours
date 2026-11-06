@@ -13,6 +13,7 @@ import { PhotoImage } from "@/components/photo-image";
 import { AvatarStack, LocalDemoNote, ThemeBadge, formatDate, formatTime } from "@/components/roll-ui";
 import type { Photo } from "@/lib/types";
 import { downloadOnePhoto } from "@/lib/photo-export";
+import { useInstalledApp } from "@/components/use-installed-app";
 
 function legacyFilter(photo: Photo) {
   if (!photo.filter || (photo.filterVersion ?? 1) >= 3) return undefined;
@@ -31,11 +32,11 @@ function PhotoViewer({ photos, index, rollName, close, move }: { photos: Photo[]
   const touchStartX = useRef<number | null>(null);
   useEffect(()=>{const oldOverflow=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=oldOverflow;};},[]);
   useEffect(()=>{const onKey=(event:globalThis.KeyboardEvent)=>{if(event.key==="Escape")close();if(event.key==="ArrowRight")move(1);if(event.key==="ArrowLeft")move(-1);};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[close,move]);
-  return <div role="dialog" aria-modal="true" aria-label="Enlarged photo" className="viewer-enter fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-3 sm:p-8" style={{paddingTop:"max(12px, env(safe-area-inset-top))",paddingBottom:"max(12px, env(safe-area-inset-bottom))"}} onTouchStart={(event)=>{touchStartX.current=event.touches[0]?.clientX??null;}} onTouchEnd={(event)=>{const startX=touchStartX.current;const endX=event.changedTouches[0]?.clientX;touchStartX.current=null;if(startX===null||endX===undefined)return;const delta=endX-startX;if(delta>55)move(-1);if(delta < -55)move(1);}} onMouseDown={(event)=>{if(event.target===event.currentTarget)close();}}>
-    <button onClick={close} style={{ top: "max(12px, calc(env(safe-area-inset-top) + 8px))", right: "max(12px, calc(env(safe-area-inset-right) + 8px))" }} className="absolute z-10 flex h-12 w-12 items-center justify-center border border-white/20 bg-black/50 shadow-lg backdrop-blur-sm" aria-label="Close photo"><X size={20}/></button>
+  return <div role="dialog" aria-modal="true" aria-label="Enlarged photo" className="viewer-enter reveal-photo-viewer fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-3 sm:p-8" style={{paddingTop:"max(12px, env(safe-area-inset-top))",paddingBottom:"max(12px, env(safe-area-inset-bottom))"}} onTouchStart={(event)=>{touchStartX.current=event.touches[0]?.clientX??null;}} onTouchEnd={(event)=>{const startX=touchStartX.current;const endX=event.changedTouches[0]?.clientX;touchStartX.current=null;if(startX===null||endX===undefined)return;const delta=endX-startX;if(delta>55)move(-1);if(delta < -55)move(1);}} onMouseDown={(event)=>{if(event.target===event.currentTarget)close();}}>
+    <button onClick={close} className="reveal-photo-viewer__close absolute z-10 flex h-12 w-12 items-center justify-center border border-white/20 bg-black/50 shadow-lg backdrop-blur-sm" aria-label="Close photo"><X size={20}/></button>
     <button onClick={()=>move(-1)} className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-white/20 bg-black/30 sm:left-6" aria-label="Previous photo"><ChevronLeft size={20}/></button>
-    <div className="flex max-h-full max-w-full flex-col items-center">
-      <PhotoImage src={photo.src} fallbackSrc={photo.cloudinaryOriginalSrc} alt={photo.caption||"Photo from the roll"} loading="eager" fetchPriority="high" style={{filter:legacyFilter(photo)}} className="viewer-photo-enter max-h-[78svh] max-w-[calc(100vw-40px)] object-contain sm:max-w-[82vw]"/>
+    <div className="reveal-photo-viewer__content flex max-h-full max-w-full flex-col items-center">
+      <div className="reveal-photo-viewer__image"><PhotoImage src={photo.src} fallbackSrc={photo.cloudinaryOriginalSrc} alt={photo.caption||"Photo from the roll"} loading="eager" fetchPriority="high" style={{filter:legacyFilter(photo)}} className="viewer-photo-enter h-full w-full object-contain"/></div>
       <div className="mt-4 flex w-full max-w-3xl items-end justify-between gap-4"><div><p className="font-display text-xl">{photo.caption||"No caption. Just the moment."}</p><p className="mt-1 font-mono text-[9px] tracking-[.1em] text-[#8d867c]">{photo.by.toUpperCase()} · {formatDate(photo.at,{month:"short",day:"numeric"}).toUpperCase()} · {formatTime(photo.at)}{photo.filter&&` · ${photo.filter.toUpperCase()}`}</p></div><div className="flex shrink-0 items-center gap-3"><PhotoDownloadButton photo={photo} rollName={rollName} index={index}/><span className="font-mono text-[10px] text-[#8d867c]">{String(index+1).padStart(2,"0")} / {String(photos.length).padStart(2,"0")}</span></div></div>
     </div>
     <button onClick={()=>move(1)} className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-white/20 bg-black/30 sm:right-6" aria-label="Next photo"><ChevronRight size={20}/></button>
@@ -53,7 +54,7 @@ function PhotoDownloadButton({ photo, rollName, index }: { photo: Photo; rollNam
     catch (caught) { setError(caught instanceof Error ? caught.message : "Photo could not be downloaded."); }
     finally { setBusy(false); }
   }
-  return <span className="relative inline-flex items-center">
+  return <span className="relative inline-flex items-center reveal-mobile__photo-download">
     <button type="button" onClick={download} disabled={busy} aria-label="Download this photo" title={busy ? "Preparing download" : "Download photo"} className="flex h-9 w-9 items-center justify-center border border-white/20 bg-black/40 text-[#eee9de] hover:bg-black/70 disabled:opacity-50"><Download size={15}/></button>
     {error && <span role="alert" className="absolute bottom-full right-0 mb-2 w-48 border border-white/15 bg-[#171613] p-2 text-[10px] text-[#e4c4b7]">{error}</span>}
   </span>;
@@ -73,6 +74,11 @@ export default function RevealPage() {
   const { id } = useParams<{id:string}>();
   const { rolls, ready } = useApp();
   const { configured, user } = useAuth();
+  const installed = useInstalledApp();
+  const [smallScreen,setSmallScreen]=useState(false);
+  const [revealTab,setRevealTab]=useState<"roll"|"photos"|"crew"|"awards">("roll");
+  const [mobilePhotoIndex,setMobilePhotoIndex]=useState(0);
+  const [crewIndex,setCrewIndex]=useState(0);
   const roll=rolls.find((item)=>item.id===id);
   const [selected,setSelected]=useState<number|null>(null);
   const [viewMode,setViewMode]=useState<"timeline"|"contributors">("timeline");
@@ -89,11 +95,68 @@ export default function RevealPage() {
   const groupedPhotos=contributorGroups.map(({key})=>({name:contributorLabels.get(key)??"Friend",photos:galleryPhotos.filter((photo)=>(photo.uploadedBy??photo.by)===key)})).filter((group)=>group.photos.length>0);
   const closeViewer=useCallback(()=>setSelected(null),[]);
   const moveViewer=useCallback((step:number)=>setSelected((current)=>{const length=galleryPhotos.length||1;return current===null?0:(current+step+length)%length;}),[galleryPhotos.length]);
+  const useMobileReveal=installed===true||smallScreen;
+  useEffect(()=>{
+    const media=window.matchMedia("(max-width: 767px), (pointer: coarse)");
+    const update=()=>setSmallScreen(media.matches);
+    update();
+    media.addEventListener?.("change",update);
+    return ()=>media.removeEventListener?.("change",update);
+  },[]);
   if(!ready)return <main className="min-h-screen px-5 py-28 text-center font-mono text-xs tracking-widest text-[#898378]">DEVELOPING YOUR ROLL...</main>;
   if(!roll)return <main className="min-h-screen px-5 py-28 text-center"><p className="font-display text-3xl">That roll isn’t in this browser.</p><Link href="/dashboard" className="button-secondary mt-6">Back to your rolls</Link></main>;
   if(roll.status==="active")return <main className="mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16"><div className="mx-auto max-w-[760px]"><LocalDemoNote/><Link href={`/rolls/${roll.id}`} className="mt-8 inline-flex items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]"><ArrowLeft size={13}/> BACK TO SESSION</Link><section className="mt-8 border border-white/10 bg-[#191714] p-7 text-center sm:p-12"><span className="mx-auto flex h-12 w-12 items-center justify-center border border-[#a33a32]/35 text-[#ba574b]"><LockKeyhole size={19}/></span><p className="eyebrow mt-6">STILL IN THE ENVELOPE</p><h1 className="mt-3 font-display text-4xl tracking-[-.04em] sm:text-5xl">This roll hasn’t closed.</h1><p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#918a7e]">{roll.photos.length} {roll.photos.length===1?"frame is":"frames are"} tucked away. Let the timer run out, or end the session when your crew is ready.</p><Link href={`/rolls/${roll.id}`} className="button-primary mt-7">Back to the session <ArrowUpRight size={14}/></Link></section></div></main>;
   const isCloudRoll=Boolean(configured&&user&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(roll.id));
   const isHost=Boolean(isCloudRoll&&user&&!user.is_anonymous&&roll.ownerId===user.id);
+  const mobilePhoto=galleryPhotos[Math.min(mobilePhotoIndex,Math.max(0,galleryPhotos.length-1))];
+  const crewEntries=roll.participants.map((person,index)=>({key:`participant-${index}`,name:person.name,initials:person.initials,avatar:person.avatar,photos:photos.filter((photo)=>photo.by===person.name)}));
+  contributorGroups.forEach(({key,name})=>{
+    if(!crewEntries.some((person)=>person.name===name))crewEntries.push({key,name,initials:name.split(/\s+/).map((part)=>part[0]??"").join("").slice(0,2).toUpperCase(),avatar:undefined,photos:photos.filter((photo)=>(photo.uploadedBy??photo.by)===key)});
+  });
+  const currentCrew=crewEntries[Math.min(crewIndex,Math.max(0,crewEntries.length-1))];
+  if(useMobileReveal)return <main className={`reveal-mobile${installed===true?" reveal-mobile--installed":""}${selected!==null?" reveal-mobile--viewer-open":""}`}>
+    <header className="reveal-mobile__header">
+      <Link href={`/rolls/${roll.id}`} className="reveal-mobile__back"><ArrowLeft size={14}/> SESSION</Link>
+      <div><p className="eyebrow">THE WAIT IS OVER · {formatDate(roll.createdAt,{month:"short",day:"numeric"}).toUpperCase()}</p><h1>{roll.name}</h1></div>
+    </header>
+    <nav className="reveal-mobile__tabs" aria-label="Revealed roll sections">
+      {([ ["roll","Roll"], ["photos","Photos"], ["crew","Crew"], ["awards","Awards"] ] as const).map(([key,label])=><button key={key} type="button" onClick={()=>setRevealTab(key)} aria-current={revealTab===key?"page":undefined} className={revealTab===key?"is-active":""}>{label}</button>)}
+    </nav>
+    <div className={`reveal-mobile__body reveal-mobile__body--${revealTab}`}>
+      {revealTab==="roll"&&<section className="reveal-mobile__roll-panel">
+        <div className="reveal-mobile__cover">
+          {photos[0]?<PhotoImage src={photos[0].src} thumbnailSrc={photos[0].thumbnailSrc} fallbackSrc={photos[0].cloudinaryOriginalSrc} alt={photos[0].caption||`Cover photo from ${roll.name}`} loading="eager" className="h-full w-full object-cover" style={{filter:legacyFilter(photos[0])}}/>:<div className="reveal-mobile__cover-empty"><Camera size={28}/><span>THE ENVELOPE IS EMPTY</span></div>}
+          <div><span>{photos.length.toString().padStart(2,"0")} FRAMES · {roll.participants.length} PEOPLE</span><ThemeBadge theme={roll.theme}/></div>
+        </div>
+        {isCloudRoll&&roll.expiresAt?<RollRetention rollId={roll.id} expiresAt={roll.expiresAt} isHost={isHost} compact/>:<p className="reveal-mobile-retention">{isCloudRoll?"This roll is temporary. Photos are kept for 30 days, then held for a 7-day renewal window.":"Demo rolls stay in this browser. Cloud rolls are kept for 30 days after reveal, followed by a 7-day renewal window."}</p>}
+        {photos.length>0?<RollExportControls rollName={roll.name} photos={photos} compact/>:<p className="reveal-mobile__empty-save">No photos to save from this roll.</p>}
+      </section>}
+      {revealTab==="photos"&&<section className="reveal-mobile__photos-panel" aria-label="Photos organized by contributor">
+        <div className="reveal-mobile__section-heading"><div><p className="eyebrow">IN CHRONOLOGICAL ORDER</p><h2>Photos <span>{photos.length}</span></h2></div>
+          <select aria-label="Show photos from contributor" value={contributorFilter} onChange={(event)=>{setSelected(null);setContributorFilter(event.target.value);setMobilePhotoIndex(0);}}><option value="all">Everyone</option>{contributorGroups.map(({key})=><option key={key} value={key}>{contributorLabels.get(key)??"Friend"}</option>)}</select>
+        </div>
+        {mobilePhoto?<>
+          <button type="button" onClick={()=>setSelected(mobilePhotoIndex)} className="reveal-mobile__photo-stage" aria-label={`Open photo ${mobilePhotoIndex+1}`}>
+            <span className="reveal-mobile__photo-image"><PhotoImage src={mobilePhoto.src} thumbnailSrc={mobilePhoto.thumbnailSrc} fallbackSrc={mobilePhoto.cloudinaryOriginalSrc} alt={mobilePhoto.caption||`Photo from ${mobilePhoto.by}`} loading="eager" className="h-full w-full object-contain" style={{filter:legacyFilter(mobilePhoto)}}/></span>
+            <span className="reveal-mobile__photo-index">FRAME {String(photos.indexOf(mobilePhoto)+1).padStart(2,"0")} · {formatTime(mobilePhoto.at)}</span>
+          </button>
+          <div className="reveal-mobile__photo-caption"><p>{mobilePhoto.caption||"No caption. Just the moment."}</p><span>{mobilePhoto.by} · {formatDate(mobilePhoto.at,{month:"short",day:"numeric"})}</span></div>
+          <div className="reveal-mobile__photo-controls"><button type="button" onClick={()=>setMobilePhotoIndex((current)=>(current-1+galleryPhotos.length)%galleryPhotos.length)} aria-label="Previous photo"><ChevronLeft size={19}/></button><span className="reveal-mobile__photo-count">{String(mobilePhotoIndex+1).padStart(2,"0")} / {String(galleryPhotos.length).padStart(2,"0")}</span><PhotoDownloadButton photo={mobilePhoto} rollName={roll.name} index={photos.indexOf(mobilePhoto)}/><button type="button" onClick={()=>setMobilePhotoIndex((current)=>(current+1)%galleryPhotos.length)} aria-label="Next photo"><ChevronRight size={19}/></button></div>
+        </>:<div className="reveal-mobile__photos-empty"><Camera size={24}/><p>No photos in this roll yet.</p></div>}
+      </section>}
+      {revealTab==="crew"&&<section className="reveal-mobile__crew-panel" aria-label="Crew">
+        {currentCrew?<>
+          <p className="eyebrow">THE PEOPLE BEHIND THE PHOTOS</p>
+          <div className="reveal-mobile__crew-card"><span className="reveal-mobile__avatar">{currentCrew.avatar?<img src={currentCrew.avatar} alt=""/>:currentCrew.initials}</span><h2>{currentCrew.name}</h2><p>{currentCrew.photos.length} {currentCrew.photos.length===1?"photo":"photos"} in this roll</p>
+            {currentCrew.photos.length>0&&<div className="reveal-mobile__crew-photos">{currentCrew.photos.slice(0,5).map((photo,index)=><button type="button" key={photo.id} onClick={()=>{setContributorFilter(contributorGroups.find((group)=>group.name===currentCrew.name)?.key??"all");setMobilePhotoIndex(index);setRevealTab("photos");}} aria-label={`View photo ${index+1} from ${currentCrew.name}`}><PhotoImage src={photo.src} thumbnailSrc={photo.thumbnailSrc} alt="" className="h-full w-full object-cover"/></button>)}</div>}
+          </div>
+          <div className="reveal-mobile__crew-controls"><button type="button" disabled={crewEntries.length<2} onClick={()=>setCrewIndex((current)=>(current-1+crewEntries.length)%crewEntries.length)} aria-label="Previous crew member"><ChevronLeft size={20}/></button><span>{String(crewIndex+1).padStart(2,"0")} / {String(crewEntries.length).padStart(2,"0")}</span><button type="button" disabled={crewEntries.length<2} onClick={()=>setCrewIndex((current)=>(current+1)%crewEntries.length)} aria-label="Next crew member"><ChevronRight size={20}/></button></div>
+        </>:<div className="reveal-mobile__photos-empty"><UsersRound size={24}/><p>No crew members listed.</p></div>}
+      </section>}
+      {revealTab==="awards"&&<div className="reveal-mobile__awards"><AwardsSection rollId={roll.id} rollName={roll.name} rollDate={roll.createdAt} photos={photos} isCloudRoll={isCloudRoll}/></div>}
+    </div>
+    {selected!==null&&galleryPhotos.length>0&&<PhotoViewer photos={galleryPhotos} index={selected} rollName={roll.name} close={closeViewer} move={moveViewer}/>}
+  </main>;
   return <main className="mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16"><div className="mx-auto max-w-[1120px]"><LocalDemoNote/>
     <Link href={`/rolls/${roll.id}`} className="mt-8 inline-flex items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]"><ArrowLeft size={13}/> BACK TO SESSION</Link>
     <p className="mt-5 font-display text-2xl leading-tight text-[#ded8cd] sm:text-3xl">{roll.name}</p>

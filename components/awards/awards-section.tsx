@@ -194,19 +194,21 @@ export function AwardsSection({
 
   async function shareResults() {
     if (!awardsResult) return;
-    const text = `AFTERHOURS AWARDS · ${rollName}\n${awardsResult.awards.map((award) => `${award.title}`).join("\n")}`;
+    const url = window.location.href;
+    const text = `AFTERHOURS AWARDS · ${rollName}\n${awardsResult.awards.map((award) => award.title).join("\n")}\n\n${awardsResult.summary}`;
+    if (!navigator.share) {
+      setShareMessage(window.isSecureContext ? "THIS BROWSER DOESN’T SUPPORT SHARING" : "OPEN THE HTTPS APP TO SHARE");
+      window.setTimeout(() => setShareMessage(""), 2200);
+      return;
+    }
     try {
-      if (navigator.share) await navigator.share({ title: `Afterhours Awards · ${rollName}`, text });
-      else {
-        await navigator.clipboard.writeText(text);
-        setShareMessage("RESULTS COPIED");
-        window.setTimeout(() => setShareMessage(""), 2200);
-      }
+      await navigator.share({ title: `Afterhours Awards · ${rollName}`, text, url });
+      setShareMessage("RESULTS SHARED");
     } catch (caught) {
       if (caught instanceof Error && caught.name === "AbortError") return;
       setShareMessage("COULDN’T SHARE RIGHT NOW");
-      window.setTimeout(() => setShareMessage(""), 2200);
     }
+    window.setTimeout(() => setShareMessage(""), 2200);
   }
 
   const samplePhoto = photos[0];
@@ -271,7 +273,7 @@ export function AwardsSection({
           {ceremonyStep === -1 ? <div className="relative py-8 text-center sm:py-14">
             <Sparkles size={22} className="mx-auto text-[#d4b77c]"/><p className="mt-5 font-mono text-[10px] tracking-[.27em] text-[#d2b880]">A VERY OFFICIAL PRODUCTION</p><h2 className="awards-chrome mt-4 font-mono text-2xl tracking-[.16em] sm:text-4xl">AFTERHOURS AWARDS</h2><p className="mt-3 font-display text-2xl text-[#e8ddc9]">Your night. Your awards.</p><p className="mt-5 font-mono text-[9px] tracking-[.11em] text-[#938a7b]">{rollName.toUpperCase()} <span className="mx-2 text-[#bf9e62]">/</span> {formatDate(rollDate).toUpperCase()}</p><p className="mx-auto mt-4 max-w-md text-xs leading-5 text-[#a49a88]">{awardsResult.summary}</p>
             <button onClick={() => setCeremonyStep(0)} className="button-primary mt-7 border-[#d1b278] bg-[#a27f47] px-7 text-xs text-[#fff4dc] hover:border-[#e1c995] hover:bg-[#b2925c]">START THE CEREMONY <ArrowRight size={14}/></button>
-          </div> : currentAward ? <div className="relative">
+          </div> : currentAward ? <div className="awards-ceremony__award relative">
             <div className="flex items-center justify-between gap-3 pr-10"><p className="font-mono text-[8px] tracking-[.18em] text-[#c7ad7c]">{finalScreen ? "THE GRAND FINALE" : `AWARD ${String(ceremonyStep + 1).padStart(2, "0")} / ${String(awards.length).padStart(2, "0")}`}</p><span className="font-mono text-[8px] text-[#8e8577]">{rollName.toUpperCase()}</span></div>
             <p className="mt-5 font-mono text-[9px] tracking-[.18em] text-[#a99673]">{finalScreen ? "PHOTO OF THE NIGHT" : "AND THE AWARD GOES TO…"}</p>
             <h2 className="awards-chrome mt-2 font-display text-4xl leading-[.95] tracking-[-.04em] sm:text-6xl">{currentAward.title}</h2>

@@ -3,6 +3,7 @@ import { DM_Mono, DM_Sans, DM_Serif_Display } from "next/font/google";
 import { AppProvider } from "@/components/app-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { SiteHeader } from "@/components/site-header";
+import { InstalledAppShell } from "@/components/installed-app-shell";
 import { ScrollMotion } from "@/components/scroll-motion";
 import "./globals.css";
 
@@ -44,8 +45,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ScrollMotion />
         <AuthProvider>
           <AppProvider>
-            <SiteHeader />
-            {children}
+            <InstalledAppShell>
+              <SiteHeader />
+              {children}
+            </InstalledAppShell>
           </AppProvider>
         </AuthProvider>
       </body>

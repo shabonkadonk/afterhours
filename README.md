@@ -12,7 +12,8 @@ Afterhours is a shared camera roll for nights out. A host creates a roll and inv
 - Retain cloud rolls for 30 days after reveal, with a 7 day renewal window for the host before scheduled deletion.
 - Try demo mode without a backend. Demo rolls are stored only in the current browser and are not shared.
 - Preview Afterhours Awards on revealed rolls. Sample mode is enabled by default; live processing remains disabled until provider, privacy, license, and age requirements have been confirmed.
-- Install the site on iPhone or Android as a Progressive Web App.
+- Install the site on iPhone or Android as a Progressive Web App, with app-style navigation and a simple offline screen.
+- Keep the app portrait-oriented where the installed browser supports orientation locking. Some iPhone versions may still allow rotation; the app shows a portrait prompt in landscape.
 
 ## Technology
 
@@ -62,7 +63,7 @@ Use the same generated value for `CRON_SECRET` in local configuration and Vercel
 4. Apply every SQL migration in [`supabase/migrations`](supabase/migrations) in filename order, using the Supabase SQL Editor or the Supabase CLI. Migrations are incremental; do not skip earlier files on a new project.
 5. Restart the development server after changing `.env.local`.
 
-The Supabase secret key (`sb_secret_...`) is the current server-only key format. Keep it in `SUPABASE_SERVICE_ROLE_KEY`; the variable name is retained for this project's server configuration.
+The current Supabase dashboard may label the privileged key **Secret key** (`sb_secret_...`); older projects may show the legacy `service_role` key. Put that server-only key in `SUPABASE_SERVICE_ROLE_KEY`; the variable name is retained for this project's server configuration. Do not use the publishable key in its place.
 
 ### Start the app
 
@@ -78,7 +79,9 @@ To test from a phone on the same Wi-Fi, start Next.js on the network interface:
 npm run dev -- --hostname 0.0.0.0
 ```
 
-Then open `http://<your-computer-ip>:3000` on the phone. The `/install` page explains how to add Afterhours to the Home Screen. PWA installation generally requires HTTPS; local network IPs may not meet that requirement.
+Then open `http://<your-computer-ip>:3000` on the phone. The `/install` page explains how to add Afterhours to the Home Screen. iPhone installation is done from Safari's Share menu with **Add to Home Screen**. PWA installation and service worker features generally require HTTPS; localhost is treated as secure for development, but a local network IP may not be. The service worker is registered only in production and only inside the installed app.
+
+The offline screen is a fallback when a navigation request cannot reach the server. It does not cache roll data or photos; private content needs an internet connection. Orientation locking is best-effort because support varies by browser and device.
 
 ## Main routes
 
@@ -95,6 +98,8 @@ Then open `http://<your-computer-ip>:3000` on the phone. The `/install` page exp
 | `/login` | Sign in or create an account |
 | `/account` | Account settings |
 | `/install` | PWA installation instructions |
+
+Installed-app navigation provides quick links to Home, Create, Join, and Profile when those destinations apply to the signed-in user. In the app shell, the main content area is separated from the fixed top and bottom navigation. Some creation and capture steps use a compact viewport layout; other content can scroll when it needs more room.
 
 Awards behavior and provider configuration are documented in [`docs/afterhours-awards.md`](docs/afterhours-awards.md).
 
@@ -123,6 +128,12 @@ Import the repository into Vercel and configure the needed environment variables
 The included [`vercel.json`](vercel.json) schedules `/api/cron/expire-rolls` daily. Set `CRON_SECRET` in Vercel so the scheduled route can authenticate, then redeploy after changing environment variables. Follow [`docs/vercel-deployment.md`](docs/vercel-deployment.md) and [`docs/supabase-setup.md`](docs/supabase-setup.md) for deployment details.
 
 Expiry reminders are shown to the host in the app; email reminders are not configured. Live database behavior and scheduled cleanup require a correctly configured Supabase project and Vercel deployment.
+
+## Revealed rolls and downloads
+
+After a roll is revealed, contributors can browse the gallery, view photos by contributor or in chronological order, and download individual images. The gallery also offers a **Save Entire Roll** export. On browsers that support the Web Share API and file sharing, the app can open the native share sheet; otherwise use the available download option. Bulk saving behavior varies across browsers, and iPhone Safari may require saving or sharing files through its own interface. Keep a connection while viewing or exporting a cloud roll.
+
+Afterhours Awards can show a sample ceremony without sending photos to an AI provider. Live processing is off by default. Review [`docs/afterhours-awards.md`](docs/afterhours-awards.md) and the live-processing gates before enabling a provider.
 
 ## Privacy and credentials
 

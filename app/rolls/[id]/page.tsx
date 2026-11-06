@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Camera, Clock3, LockKeyhole, PartyPopper, Share2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Camera, Clock3, LockKeyhole, PartyPopper, Share2, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useApp } from "@/components/app-provider";
 import { useAuth } from "@/components/auth-provider";
@@ -11,6 +11,7 @@ import { InvitationManager } from "@/components/invitation-manager";
 import { PhotoImage } from "@/components/photo-image";
 import { AvatarStack, LocalDemoNote, ParticipantCount, PhotoCount, ThemeBadge, formatDate, formatTime } from "@/components/roll-ui";
 import type { Roll } from "@/lib/types";
+import { useInstalledApp } from "@/components/use-installed-app";
 
 function useCountdown(endsAt: string) {
   const [remaining, setRemaining] = useState(0);
@@ -24,15 +25,68 @@ function useCountdown(endsAt: string) {
   return { remaining, started, days: Math.floor(seconds / 86400), hours: Math.floor((seconds % 86400) / 3600), minutes: Math.floor((seconds % 3600) / 60), secs: seconds % 60 };
 }
 
+function MobileActiveRoll({ roll, countdown, isHost, canEnd, isInstalled, onEnd }: {
+  roll: Roll;
+  countdown: ReturnType<typeof useCountdown>;
+  isHost: boolean;
+  canEnd: boolean;
+  isInstalled: boolean;
+  onEnd: () => void;
+}) {
+  const [crewOpen, setCrewOpen] = useState(false);
+  const remaining = Math.max(0, roll.photoLimit - roll.photos.length);
+  const progress = Math.min(100, (roll.photos.length / roll.photoLimit) * 100);
+  return <main className={`mobile-active-roll${isInstalled ? " mobile-active-roll--installed" : ""}`}>
+    <div className="mobile-active-roll__inner">
+      <Link href="/dashboard" className="mobile-active-roll__back"><ArrowLeft size={15}/> All rolls</Link>
+      <div className="mobile-active-roll__title"><p className="eyebrow"><i/> CAMERA IS OPEN</p><h1 className="font-display">{roll.name}</h1><p>{formatDate(roll.endsAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} reveal</p></div>
+      <section className="mobile-countdown" aria-label="Time until the roll closes">
+        <p className="mobile-countdown__heading"><Clock3 size={12}/> THE NIGHT OPENS IN <span>{formatDate(roll.endsAt, { month: "short", day: "numeric" }).toUpperCase()}</span></p>
+        {[{ n: countdown.days, l: "DAYS" }, { n: countdown.hours, l: "HRS" }, { n: countdown.minutes, l: "MIN" }, { n: countdown.secs, l: "SEC" }].map((item) => <div key={item.l}><strong>{String(item.n).padStart(2, "0")}</strong><span>{item.l}</span></div>)}
+      </section>
+      <section className="mobile-roll-capacity" aria-label={`${roll.photos.length} photos uploaded, ${remaining} remaining`}>
+        <div><span>PHOTOS IN THE ROLL</span><strong>{roll.photos.length}<i> / {roll.photoLimit}</i></strong></div>
+        <div className="mobile-roll-capacity__track"><span style={{ width: `${progress}%` }}/></div>
+        <p>{remaining} {remaining === 1 ? "spot" : "spots"} left · Photos stay tucked away until reveal.</p>
+      </section>
+      {remaining > 0 ? <Link href={`/capture/${roll.id}`} className="button-primary mobile-roll-upload"><Camera size={18}/> Add photos <ArrowUpRight size={16}/></Link> : <div className="mobile-roll-full">This roll is full.</div>}
+      <div className={`mobile-roll-actions${isHost ? " mobile-roll-actions--host" : ""}`}>
+        {isHost && <InvitationManager rollId={roll.id} compact/>}
+        <button type="button" onClick={() => setCrewOpen(true)} className="mobile-roll-action"><Users size={17}/><span>Crew · {roll.participants.length}</span></button>
+      </div>
+      {canEnd && <button type="button" onClick={onEnd} className="mobile-roll-end"><PartyPopper size={15}/> End session & reveal</button>}
+    </div>
+
+    {crewOpen && <div className="mobile-roll-sheet-backdrop mobile-crew-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCrewOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-label="People in this roll" className="mobile-roll-sheet mobile-crew-sheet">
+        <div className="mobile-roll-sheet__heading"><div><p className="eyebrow">THE CREW</p><h2>{roll.participants.length} in this roll</h2></div><button type="button" onClick={() => setCrewOpen(false)} aria-label="Close crew list" className="mobile-roll-sheet__close"><X size={19}/></button></div>
+        <div className="mobile-crew-list">{roll.participants.map((person, index) => <div key={`${person.name}-${index}`}><span>{person.avatar ? <img src={person.avatar} alt=""/> : person.initials}</span><strong>{person.name}</strong>{roll.photos.some((photo) => photo.by === person.name) && <small>CONTRIBUTOR</small>}</div>)}</div>
+      </section>
+    </div>}
+  </main>;
+}
+
 function RollContents({ roll }: { roll: Roll }) {
   const router = useRouter();
   const { revealRoll } = useApp();
   const { configured, user } = useAuth();
+  const installed = useInstalledApp();
+  const [smallScreen, setSmallScreen] = useState(false);
   const isHost = Boolean(configured && user && !user.is_anonymous && roll.ownerId === user.id);
+  const canEnd = !configured || !user || roll.ownerId === user.id;
   const countdown = useCountdown(roll.endsAt);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px), (pointer: coarse)");
+    const update = () => setSmallScreen(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
   useEffect(() => { if (countdown.started && roll.status === "active" && countdown.remaining === 0) void revealRoll(roll.id).catch(() => {}); }, [countdown.remaining, countdown.started, roll.id, roll.status, revealRoll]);
 
   async function finishRoll() { await revealRoll(roll.id); router.push(`/rolls/${roll.id}/reveal`); }
+
+  if (roll.status === "active" && (installed === true || smallScreen)) return <MobileActiveRoll roll={roll} countdown={countdown} isHost={isHost} canEnd={canEnd} isInstalled={installed === true} onEnd={() => void finishRoll()}/>;
 
   return <main className="mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16">
     <div className="mx-auto max-w-[1120px]"><LocalDemoNote/>
