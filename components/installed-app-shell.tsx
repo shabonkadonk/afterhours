@@ -7,6 +7,10 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useInstalledApp } from "@/components/use-installed-app";
 
+type OrientationLock = ScreenOrientation & {
+  lock?: (orientation: "portrait-primary") => Promise<void>;
+};
+
 function AppNavigation() {
   const path = usePathname();
   const { user, configured } = useAuth();
@@ -34,13 +38,14 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
     if (!installed) return;
     document.documentElement.classList.add("is-installed-app");
     try {
-      void screen.orientation?.lock?.("portrait-primary").catch(() => undefined);
+      const orientation = screen.orientation as OrientationLock | undefined;
+      void orientation?.lock?.("portrait-primary").catch(() => undefined);
     } catch {
       // Some installed browsers expose orientation data but do not allow a lock.
     }
     return () => {
       document.documentElement.classList.remove("is-installed-app");
-      screen.orientation?.unlock?.();
+      (screen.orientation as OrientationLock | undefined)?.unlock?.();
     };
   }, [installed]);
 
