@@ -1,7 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Photo, Roll } from "@/lib/types";
 
-type RollInput = { name: string; durationHours: number; photoLimit: number; theme: string };
+type RollInput = { name: string; endsAt: string; photoLimit: number; theme: string };
 type PhotoInput = (Omit<Photo, "id" | "at" | "by"> & { uploadId?: string })[];
 
 function backendError(error: { message: string; details?: string | null; hint?: string | null }) {
@@ -37,7 +37,7 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
   if (!rollIds.length) return [];
 
   const { data: initialRolls, error: rollsError } = await supabase
-    .from("rolls").select("*").in("id", rollIds).order("created_at", { ascending: false });
+    .from("rolls").select("id,owner_id,name,theme,status,created_at,ends_at,photo_limit,photo_count,revealed_at,expires_at").in("id", rollIds).order("created_at", { ascending: false });
   if (rollsError) throw backendError(rollsError);
 
   const expired = (initialRolls ?? []).filter((roll) => roll.status === "active" && Date.parse(roll.ends_at) <= Date.now());
@@ -47,7 +47,7 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
     if (closeError) throw backendError(closeError);
   }
   const { data: rolls, error: refreshError } = expired.length
-    ? await supabase.from("rolls").select("*").in("id", rollIds).order("created_at", { ascending: false })
+    ? await supabase.from("rolls").select("id,owner_id,name,theme,status,created_at,ends_at,photo_limit,photo_count,revealed_at,expires_at").in("id", rollIds).order("created_at", { ascending: false })
     : { data: initialRolls, error: null };
   if (refreshError) throw backendError(refreshError);
 
@@ -110,7 +110,8 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
         src: signedByPath.get(objectPath) ?? "",
         thumbnailSrc: thumbnailByPath.get(thumbnailPath(objectPath)),
         caption: photo.caption as string,
-        by: photo.uploaded_by === user.id ? "You" : uploader,
+        by: uploader,
+        uploadedBy: photo.uploaded_by as string,
         at: photo.created_at as string,
         filter: photo.filter as string | undefined,
         filterVersion: photo.filter_version as number | undefined,
@@ -126,7 +127,8 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
       createdAt: row.created_at as string,
       endsAt: row.ends_at as string,
       photoLimit: row.photo_limit as number,
-      inviteCode: row.invite_code as string,
+      inviteCode: "",
+      expiresAt: row.expires_at as string | null,
       participants: people.map((person) => ({ name: person.display_name || "Friend", initials: initials(person.display_name || "Friend") })),
       photos: rollPhotos,
     };
@@ -139,13 +141,14 @@ export async function createCloudRoll(supabase: SupabaseClient, user: User, inpu
     name: input.name,
     theme: input.theme,
     photo_limit: input.photoLimit,
-    ends_at: new Date(Date.now() + input.durationHours * 60 * 60 * 1000).toISOString(),
-  }).select("*").single();
+    ends_at: input.endsAt,
+  }).select("id,owner_id,name,theme,status,created_at,ends_at,photo_limit,photo_count,revealed_at,expires_at").single();
   if (error) throw backendError(error);
   return {
     id: data.id, ownerId: data.owner_id, name: data.name, theme: data.theme, status: data.status,
     createdAt: data.created_at, endsAt: data.ends_at, photoLimit: data.photo_limit,
-    inviteCode: data.invite_code,
+    inviteCode: "",
+    expiresAt: data.expires_at,
     participants: [{ name: user.user_metadata.display_name || "You", initials: initials(user.user_metadata.display_name || "You") }],
     photos: [],
   };
@@ -160,7 +163,6 @@ export async function addCloudPhotos(supabase: SupabaseClient, user: User, rollI
   if (rollError) throw backendError(rollError);
   if (!roll) throw new Error("This roll is not shared with this account. Join it with the invite code first.");
   if (roll.status !== "active") throw new Error("This roll is already closed, so it can’t accept photos.");
-  if (roll.photo_count + additions.length > roll.photo_limit) throw new Error("There aren’t enough frames left for these photos.");
 
   const [memberResult, ownerResult] = await Promise.all([
     supabase.rpc("is_roll_member", { target_roll_id: rollId }),
@@ -172,60 +174,96 @@ export async function addCloudPhotos(supabase: SupabaseClient, user: User, rollI
   const isOwner = ownerResult.data === true;
   if (!isMember && !isOwner) throw new Error("This account can open the roll but is missing its roll membership. Ask the owner to share a fresh invite code, then join the roll again.");
 
+  const requestedIds = additions.flatMap((item) => item.uploadId ? [item.uploadId] : []);
+  if (new Set(requestedIds).size !== requestedIds.length) throw new Error("Each photo needs a unique upload ID. Please select the photos again.");
+  const reservedById = new Map<string, { roll_id: string; uploaded_by: string }>();
+  if (requestedIds.length) {
+    const { data: existingReservations, error: reservationsError } = await supabase.from("photos")
+      .select("id,roll_id,uploaded_by").in("id", requestedIds);
+    if (reservationsError) throw backendError(reservationsError);
+    for (const reservation of existingReservations ?? []) {
+      if (reservation.roll_id !== rollId || reservation.uploaded_by !== user.id) {
+        throw new Error("A photo with this ID already belongs to another upload.");
+      }
+      reservedById.set(reservation.id as string, reservation as { roll_id: string; uploaded_by: string });
+    }
+  }
+  const newFrameCount = additions.length - reservedById.size;
+  if (roll.photo_count + newFrameCount > roll.photo_limit) throw new Error("There aren’t enough frames left for these photos.");
+
   for (const item of additions) {
     const response = await fetch(item.src);
     if (!response.ok) throw new Error("Could not read the prepared photo.");
     const blob = await response.blob();
+    if (blob.type !== "image/jpeg" || blob.size === 0 || blob.size > 5 * 1024 * 1024) {
+      throw new Error("Photos must be valid JPEG images smaller than 5 MB.");
+    }
     const photoId = item.uploadId ?? createPhotoId();
     const path = `${user.id}/${rollId}/${photoId}.jpg`;
-    const { data: existingPhoto, error: existingError } = await supabase.from("photos")
-      .select("id").eq("id", photoId).maybeSingle();
-    if (existingError) throw backendError(existingError);
-    if (existingPhoto) continue;
-    const { error: uploadError } = await supabase.storage.from("roll-photos").upload(path, blob, {
-      contentType: "image/jpeg", upsert: false,
-    });
-    const existingObject = uploadError && /already exists/i.test(uploadError.message);
-    if (uploadError && !existingObject) throw new Error(`Photo storage upload was rejected (account recognized as ${isOwner ? "owner" : "member"}; roll active; ${roll.photo_count}/${roll.photo_limit} frames used): ${backendError(uploadError).message}`);
+    const hasReservation = reservedById.has(photoId);
+
+    // Reserve the frame first. The database trigger serializes concurrent uploads
+    // against photo_limit, and Storage RLS requires this matching reservation.
+    if (!hasReservation) {
+      const { error: insertError } = await supabase.from("photos").insert({
+        id: photoId,
+        roll_id: rollId,
+        uploaded_by: user.id,
+        object_path: path,
+        caption: item.caption,
+        filter: item.filter,
+        filter_version: item.filterVersion,
+        date_stamp_year: item.dateStampYear ?? null,
+      });
+      if (insertError) throw new Error(`Photo could not reserve a frame: ${backendError(insertError).message}`);
+    }
 
     const thumbPath = thumbnailPath(path);
-    if (item.thumbnailSrc) {
-      try {
+    try {
+      const { error: uploadError } = await supabase.storage.from("roll-photos").upload(path, blob, {
+        contentType: "image/jpeg", upsert: false,
+      });
+      const existingObject = uploadError && /already exists/i.test(uploadError.message);
+      if (uploadError && !existingObject) throw new Error(`Photo storage upload was rejected (account recognized as ${isOwner ? "owner" : "member"}; roll active; ${roll.photo_count}/${roll.photo_limit} frames used): ${backendError(uploadError).message}`);
+
+      if (item.thumbnailSrc) {
+        try {
         const thumbnailResponse = await fetch(item.thumbnailSrc);
         if (!thumbnailResponse.ok) throw new Error("Could not prepare the gallery thumbnail.");
         const thumbnailBlob = await thumbnailResponse.blob();
+        if (thumbnailBlob.type !== "image/jpeg" || thumbnailBlob.size === 0 || thumbnailBlob.size > 5 * 1024 * 1024) {
+          throw new Error("The gallery thumbnail is not a valid JPEG under 5 MB.");
+        }
         const { error: thumbnailUploadError } = await supabase.storage.from("roll-photos").upload(thumbPath, thumbnailBlob, {
           contentType: "image/jpeg", upsert: false,
         });
         if (thumbnailUploadError && !/already exists/i.test(thumbnailUploadError.message)) {
           console.warn("Could not save the gallery thumbnail; the original photo will be used instead.", thumbnailUploadError.message);
         }
-      } catch (error) {
-        console.warn("Could not prepare the gallery thumbnail; the original photo will be used instead.", error);
+        } catch (error) {
+          console.warn("Could not prepare the gallery thumbnail; the original photo will be used instead.", error);
+        }
       }
-    }
-
-    const { error: insertError } = await supabase.from("photos").insert({
-      id: photoId,
-      roll_id: rollId,
-      uploaded_by: user.id,
-      object_path: path,
-      caption: item.caption,
-      filter: item.filter,
-      filter_version: item.filterVersion,
-      date_stamp_year: item.dateStampYear ?? null,
-    });
-    if (insertError) {
-      await supabase.storage.from("roll-photos").remove([path, thumbPath]);
-      throw new Error(`Photo record insert was rejected: ${backendError(insertError).message}`);
+    } catch (error) {
+      if (!hasReservation) {
+        const { error: storageCleanupError } = await supabase.storage.from("roll-photos").remove([path, thumbPath]);
+        if (storageCleanupError) {
+          throw new Error(`${error instanceof Error ? error.message : "Photo upload failed."} Storage cleanup also failed, so the frame reservation was kept for a safe retry: ${backendError(storageCleanupError).message}`);
+        }
+        const { error: cleanupError } = await supabase.from("photos").delete().eq("id", photoId).eq("uploaded_by", user.id);
+        if (cleanupError) {
+          throw new Error(`${error instanceof Error ? error.message : "Photo upload failed."} The reserved frame also could not be released: ${backendError(cleanupError).message}`);
+        }
+      }
+      throw error;
     }
   }
 }
 
 export async function deleteCloudRoll(supabase: SupabaseClient, rollId: string) {
-  const { data: photos, error: photoError } = await supabase.from("photos").select("object_path").eq("roll_id", rollId);
+  const { data: photos, error: photoError } = await supabase.from("photos").select("object_path,original_object_path").eq("roll_id", rollId);
   if (photoError) throw backendError(photoError);
-  const paths = (photos ?? []).map((photo) => photo.object_path as string);
+  const paths = (photos ?? []).flatMap((photo) => [photo.object_path as string, photo.original_object_path as string | null].filter((path): path is string => Boolean(path)));
   if (paths.length) {
     const { error } = await supabase.storage.from("roll-photos").remove([...paths, ...paths.map(thumbnailPath)]);
     if (error) throw backendError(error);
@@ -239,11 +277,41 @@ export async function closeCloudRoll(supabase: SupabaseClient, rollId: string) {
   if (error) throw backendError(error);
 }
 
-export async function joinCloudRoll(supabase: SupabaseClient, inviteCode: string, displayName: string) {
-  const { data, error } = await supabase.rpc("join_roll_by_invite_code", {
-    code: inviteCode.trim().toUpperCase(),
-    member_name: displayName.trim(),
+export async function joinCloudRoll(inviteCode: string, displayName: string) {
+  const response = await fetch("/api/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: inviteCode.trim().toUpperCase(), displayName: displayName.trim() }),
   });
+  const payload = await response.json() as { rollId?: string; error?: string };
+  if (!response.ok || !payload.rollId) throw new Error(payload.error ?? "Could not join that roll. Check the code and try again.");
+  return payload.rollId;
+}
+
+export async function joinCloudRollByToken(token: string, displayName: string) {
+  const response = await fetch("/api/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, displayName: displayName.trim() }),
+  });
+  const payload = await response.json() as { rollId?: string; error?: string };
+  if (!response.ok || !payload.rollId) throw new Error(payload.error ?? "Could not join that roll. Try again.");
+  return payload.rollId;
+}
+
+export async function rotateCloudInvitation(supabase: SupabaseClient, rollId: string) {
+  const { data, error } = await supabase.rpc("rotate_roll_invitation", { target_roll_id: rollId });
+  if (error) throw backendError(error);
+  return data?.[0] as { invite_token: string; join_code: string };
+}
+
+export async function setCloudInvitationEnabled(supabase: SupabaseClient, rollId: string, enabled: boolean) {
+  const { error } = await supabase.rpc("set_roll_invitation_enabled", { target_roll_id: rollId, enabled });
+  if (error) throw backendError(error);
+}
+
+export async function renewCloudRoll(supabase: SupabaseClient, rollId: string) {
+  const { data, error } = await supabase.rpc("renew_roll", { target_roll_id: rollId });
   if (error) throw backendError(error);
   return data as string;
 }

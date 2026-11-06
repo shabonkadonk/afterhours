@@ -18,15 +18,18 @@ export function LocalDemoNote({ children }: { children?: React.ReactNode }) {
   const { storageWarning } = useApp();
   const { configured, user } = useAuth();
   const defaultMessage = configured
-    ? user ? "Shared rolls · Your photos sync with your account." : "Sign in to sync your photos across devices."
+    ? user?.is_anonymous ? "Guest session · Your access is saved in this browser." : user ? "Shared rolls · Your photos sync with your account." : "Sign in to sync your photos across devices."
     : "Demo mode · Rolls are saved in this browser only.";
-  const warningMessage = configured && user
+  const warningMessage = configured && user?.is_anonymous
+    ? "Couldn’t sync your guest session. Keep this browser data to return to your roll."
+    : configured && user
     ? "Couldn’t sync your changes. Check your connection and try again."
     : "Browser storage is full. Recent changes may not be saved.";
   return <div role={storageWarning ? "alert" : undefined} className={`flex items-center gap-2 border px-3 py-2.5 text-xs leading-5 ${storageWarning ? "border-[#d87b68]/50 bg-[#a33a32]/15 text-[#f2b8aa]" : "border-[#a33a32]/30 bg-[#a33a32]/[.07] text-[#c5b3a8]"}`}><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#b94b41]" />{storageWarning ? warningMessage : children ?? defaultMessage}</div>;
 }
 export function PhotoCount({ roll }: { roll: Roll }) {
-  return <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-[#b9b2a6]"><Camera size={13}/>{roll.photos.length.toString().padStart(2, "0")} / {roll.photoLimit.toString().padStart(2, "0")}</span>;
+  const remaining = Math.max(0, roll.photoLimit - roll.photos.length);
+  return <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[10px] text-[#b9b2a6]"><Camera size={13}/>{roll.photos.length.toString().padStart(2, "0")} / {roll.photoLimit.toString().padStart(2, "0")}{roll.status === "active" && <span className="text-[#827b70]">· {remaining} LEFT</span>}</span>;
 }
 
 export function ParticipantCount({ people }: { people: Participant[] }) {

@@ -13,7 +13,9 @@ export function SiteHeader() {
   const isInstalled = useInstalledApp();
   const onCreate = path === "/rolls/new";
   const onRolls = path.startsWith("/dashboard") || path.startsWith("/capture/") || path.startsWith("/join") || (path.startsWith("/rolls/") && !onCreate);
-  const accountHref = user ? "/account" : "/login";
+  const isGuest = Boolean(user?.is_anonymous);
+  const accountHref = isGuest ? "/login?next=%2Fdashboard" : user ? "/account" : "/login";
+  const accountLabel = isGuest ? "Host sign in" : user ? "Account" : "Sign in";
   return (
     <>
     <header className="relative z-20 border-b border-white/10 bg-[#141311]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
@@ -26,9 +28,9 @@ export function SiteHeader() {
           <nav aria-label="Primary navigation" className="hidden items-center gap-8 sm:flex">
             <Link href="/dashboard" aria-current={onRolls ? "page" : undefined} className={`text-xs transition ${onRolls ? "text-[#eee9de]" : "text-[#898378] hover:text-[#eee9de]"}`}>Your rolls</Link>
             {isHome ? <Link href="/rolls/new" className="button-primary min-h-9 px-3 text-xs sm:min-h-10 sm:px-4">Create a roll <ArrowUpRight size={13}/></Link> : <Link href="/rolls/new" aria-current={onCreate ? "page" : undefined} className="flex items-center gap-2 text-xs text-[#d5cfc3] transition hover:text-white"><Camera size={14} className="text-[#b54b40]"/>New roll</Link>}
-            {configured && <Link href={accountHref} className="flex min-h-9 items-center gap-1.5 text-xs text-[#aaa396] transition hover:text-white"><UserRound size={15}/>{user ? "Account" : "Sign in"}</Link>}
+            {configured && <Link href={accountHref} className="flex min-h-9 items-center gap-1.5 text-xs text-[#aaa396] transition hover:text-white"><UserRound size={15}/>{accountLabel}</Link>}
           </nav>
-          {configured && <Link href={accountHref} aria-label={user ? "Account" : "Sign in"} className="flex h-12 w-12 shrink-0 items-center justify-center text-[#eee9de] transition hover:text-white sm:hidden"><UserRound size={19}/></Link>}
+          {configured && <Link href={accountHref} aria-label={accountLabel} className="flex h-12 w-12 shrink-0 items-center justify-center text-[#eee9de] transition hover:text-white sm:hidden"><UserRound size={19}/></Link>}
         </div>
       </div>
     </header>

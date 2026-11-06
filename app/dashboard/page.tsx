@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Camera, ChevronRight, Clock3, KeyRound, Plus, Sparkles } from "lucide-react";
 import { useApp } from "@/components/app-provider";
+import { useAuth } from "@/components/auth-provider";
 import { DeleteRollButton } from "@/components/delete-roll-button";
 import { PhotoImage } from "@/components/photo-image";
 import { AvatarStack, LocalDemoNote, PhotoCount, ThemeBadge, formatDate } from "@/components/roll-ui";
@@ -21,15 +22,18 @@ function ActiveRollCard({ roll }: { roll: Roll }) {
   </Link><DeleteRollButton rollId={roll.id} rollName={roll.name} photoCount={roll.photos.length} ownerId={roll.ownerId} className="absolute bottom-4 right-4 z-10 min-h-9 bg-[#171613]/90 px-2 sm:bottom-5 sm:right-5"/></div>;
 }
 
-function RevealedCard({ roll, index }: { roll: Roll; index: number }) {
+function RevealedCard({ roll, index, isHost }: { roll: Roll; index: number; isHost: boolean }) {
   const cover = roll.photos[0]?.src;
+  const daysUntilExpiry = roll.expiresAt ? Math.ceil((Date.parse(roll.expiresAt) - Date.now()) / (24 * 60 * 60 * 1000)) : null;
+  const renewSoon = daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= -7;
+  const retentionEnded = daysUntilExpiry !== null && daysUntilExpiry < -7;
   return <div className={`roll-card scroll-reveal scroll-reveal--${(index % 3) + 1} relative`}><Link href={`/rolls/${roll.id}/reveal`} className="group block border border-white/10 bg-[#1b1916] transition hover:border-white/25">
     <div className="photo-frame relative aspect-[1.35]">
       {cover ? <PhotoImage src={cover} thumbnailSrc={roll.photos[0]?.thumbnailSrc} alt="" loading="lazy" className="dashboard-cover h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"/> : <div className="flex h-full items-center justify-center text-[#756e62]"><Camera size={28}/></div>}
       <span className="absolute left-3 top-3 z-[1] font-mono text-[9px] tracking-[.12em] text-white drop-shadow">ROLL 0{index + 1}</span>
       <span className="absolute bottom-3 right-3 z-[1] font-mono text-[9px] text-white drop-shadow">{roll.photos.length.toString().padStart(2,"0")} FRAMES</span>
     </div>
-    <div className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow mb-2">{formatDate(roll.createdAt).toUpperCase()} · OPENED</p><h3 className="font-display text-[22px] leading-tight">{roll.name}</h3></div><ChevronRight size={15} className="mt-1 shrink-0 text-[#8d867a] transition group-hover:translate-x-1 group-hover:text-white"/></div><div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3"><AvatarStack people={roll.participants} size="sm"/><ThemeBadge theme={roll.theme}/></div></div>
+    <div className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow mb-2">{formatDate(roll.createdAt).toUpperCase()} · OPENED</p><h3 className="font-display text-[22px] leading-tight">{roll.name}</h3></div><ChevronRight size={15} className="mt-1 shrink-0 text-[#8d867a] transition group-hover:translate-x-1 group-hover:text-white"/></div><div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3"><AvatarStack people={roll.participants} size="sm"/><ThemeBadge theme={roll.theme}/></div>{roll.expiresAt && <p className={`mt-3 font-mono text-[8px] tracking-[.1em] ${renewSoon && isHost ? "text-[#d0ad70]" : "text-[#777168]"}`}>{retentionEnded ? "RETENTION WINDOW ENDED · " : renewSoon && isHost ? "RENEW SOON · " : "PHOTOS EXPIRE · "}{formatDate(roll.expiresAt, { month: "short", day: "numeric" }).toUpperCase()}{renewSoon && isHost ? " · OPEN GALLERY TO RENEW" : ""}</p>}</div>
   </Link><DeleteRollButton rollId={roll.id} rollName={roll.name} photoCount={roll.photos.length} ownerId={roll.ownerId} className="absolute right-2 top-2 z-[2] min-h-9 bg-[#141311]/90 px-2"/></div>;
 }
 
@@ -39,6 +43,7 @@ function AdditionalActiveRoll({ roll, index }: { roll: Roll; index: number }) {
 
 export default function DashboardPage() {
   const { rolls, ready } = useApp();
+  const { user } = useAuth();
   const active = rolls.filter((roll) => roll.status === "active");
   const revealed = rolls.filter((roll) => roll.status === "revealed");
   return <main className="dashboard-page mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16">
@@ -52,7 +57,7 @@ export default function DashboardPage() {
         {active.length ? <><div className="grid gap-4 lg:grid-cols-[1.45fr_.55fr]">{active.slice(0, 1).map((roll) => <ActiveRollCard key={roll.id} roll={roll}/>)}<div className="scroll-reveal scroll-reveal--2 flex flex-col justify-between border border-white/10 bg-[#1a1815] p-5 sm:p-7"><div><div className="flex h-9 w-9 items-center justify-center border border-[#a33a32]/40 text-[#bd5c51]"><Sparkles size={16}/></div><p className="eyebrow mt-6">A SHARED ALBUM FOR THE NIGHT</p><h3 className="mt-3 max-w-[250px] font-display text-3xl leading-[1.02]">Be there now.<br/><i>Remember it later.</i></h3><p className="mt-4 max-w-[290px] text-sm leading-6 text-[#8f887c]">Photos stay private while the roll is open. When it ends, everyone can see the full gallery.</p></div><div className="mt-8 border-t border-white/10 pt-4 text-xs text-[#6e685e]">Invite friends to add their photos.</div></div></div>{active.length>1&&<div className="mt-3 grid gap-2">{active.slice(1).map((roll, index)=><AdditionalActiveRoll key={roll.id} roll={roll} index={index}/>)}</div>}</> : <div className="dashboard-empty flex flex-col items-start justify-between gap-6 border border-dashed border-white/15 bg-white/[.015] p-7 sm:flex-row sm:items-center sm:p-10"><div><p className="eyebrow mb-3">READY WHEN YOU ARE</p><h3 className="font-display text-3xl">Start a roll for your next night out.</h3><p className="mt-2 text-sm text-[#898378]">Invite friends to share the photos they take.</p></div><Link href="/rolls/new" className="button-secondary shrink-0">Create a roll <ArrowUpRight size={14}/></Link></div>}
       </section>
       <section className="mt-12"><div className="dashboard-section-heading scroll-reveal mb-5 flex items-end justify-between border-b border-white/10 pb-4"><div><p className="eyebrow mb-2">YOUR GALLERIES</p><h2 className="font-display text-3xl tracking-[-.035em]">Past rolls <span className="font-sans text-sm text-[#777168]">/ {revealed.length}</span></h2></div><span className="hidden text-xs text-[#716b61] sm:block">Revisit the photos from nights out.</span></div>
-        {revealed.length ? <div className="dashboard-gallery grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{revealed.map((roll, index) => <RevealedCard key={roll.id} roll={roll} index={index}/>)}</div> : <div className="dashboard-empty border border-dashed border-white/15 py-10 text-center"><Camera size={18} className="mx-auto text-[#777168]"/><p className="mt-3 font-display text-xl">Your first roll is waiting.</p><p className="mt-1 text-sm text-[#898378]">When a session ends, its photos will land here.</p></div>}
+        {revealed.length ? <div className="dashboard-gallery grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{revealed.map((roll, index) => <RevealedCard key={roll.id} roll={roll} index={index} isHost={Boolean(user && !user.is_anonymous && roll.ownerId === user.id)}/>)}</div> : <div className="dashboard-empty border border-dashed border-white/15 py-10 text-center"><Camera size={18} className="mx-auto text-[#777168]"/><p className="mt-3 font-display text-xl">Your first roll is waiting.</p><p className="mt-1 text-sm text-[#898378]">When a session ends, its photos will land here.</p></div>}
       </section>
       <div className="mt-12 flex flex-col gap-3 border-t border-white/10 pt-5 text-[10px] text-[#676158] sm:flex-row sm:items-center sm:justify-between"><p><span className="font-mono tracking-[.1em]">DEMO MODE</span><span className="mx-2 text-[#a33a32]">·</span>Sample rolls are only visible in this browser. No photos are sent to a server.</p><Link href="/install" className="text-[#aaa396] underline decoration-white/20 underline-offset-4 hover:text-white">Install guide</Link></div>
     </>}

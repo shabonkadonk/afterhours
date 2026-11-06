@@ -4,6 +4,7 @@ export type Photo = {
   thumbnailSrc?: string;
   caption: string;
   by: string;
+  uploadedBy?: string;
   at: string;
   filter?: string;
   filterVersion?: number;
@@ -28,6 +29,10 @@ export type Roll = {
   endsAt: string;
   photoLimit: number;
   inviteCode: string;
+  inviteToken?: string;
+  joinCode?: string;
+  invitationEnabled?: boolean;
+  expiresAt?: string | null;
   participants: Participant[];
   photos: Photo[];
 };

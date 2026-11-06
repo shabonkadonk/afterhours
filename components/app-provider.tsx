@@ -7,7 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { addCloudPhotos, closeCloudRoll, createCloudRoll, deleteCloudRoll, loadCloudRolls } from "@/lib/supabase/rolls";
 
-type CreateRollInput = { name: string; durationHours: number; photoLimit: number; theme: string };
+type CreateRollInput = { name: string; endsAt: string; photoLimit: number; theme: string };
 type AppContextValue = {
   rolls: Roll[];
   ready: boolean;
@@ -99,7 +99,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
     const id = `roll-${now.getTime().toString(36)}`;
     const roll: Roll = {
       id, name: input.name.trim(), theme: input.theme, status: "active", createdAt: now.toISOString(),
-      endsAt: new Date(now.getTime() + input.durationHours * 3600000).toISOString(), photoLimit: input.photoLimit,
+      endsAt: input.endsAt, photoLimit: input.photoLimit,
       inviteCode: Math.random().toString(36).slice(2, 8).toUpperCase(),
       participants: [{ name: "You", initials: "YO" }], photos: [],
     };
