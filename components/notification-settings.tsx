@@ -79,7 +79,7 @@ export function NotificationSettings() {
         });
       await postSubscription(subscription);
       setEnabled(true);
-      setMessage("Notifications are on for roll reveals.");
+      setMessage("Notifications are on for roll updates.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not enable notifications.");
     } finally {
@@ -118,7 +118,7 @@ export function NotificationSettings() {
       ? "Push notifications are not configured yet."
       : permission === "denied"
         ? "Notifications are blocked in your browser settings."
-        : "Get a heads-up when a shared roll is ready to open.";
+        : "Get alerts when someone joins a roll or it is ready to open.";
 
   return <section className="flow-panel mt-5 border border-white/10 bg-[#191714] p-6 sm:p-8">
     <div className="flex items-start gap-4">
@@ -127,7 +127,7 @@ export function NotificationSettings() {
       </span>
       <div className="min-w-0 flex-1">
         <p className="eyebrow">PUSH NOTIFICATIONS</p>
-        <h2 className="mt-2 font-display text-2xl">Know when a roll opens.</h2>
+        <h2 className="mt-2 font-display text-2xl">Get roll updates.</h2>
         <p className="mt-2 text-sm leading-6 text-[#918a7e]">{unavailableText}</p>
         {message && <p role="status" className="mt-3 text-xs leading-5 text-[#c7bfb1]">{message}</p>}
         {permission === "denied" && <p className="mt-2 text-xs leading-5 text-[#c7bfb1]">Change the site’s notification permission in your browser settings, then come back here.</p>}

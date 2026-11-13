@@ -572,7 +572,7 @@ html.is-installed-app .reveal-photo-viewer__close { top: calc(48px + env(safe-ar
 }
 
 @media (orientation: landscape) and (max-height: 600px) {
-  html.is-installed-app .installed-app::after {
+  html.is-installed-app:not(.is-native-camera-open) .installed-app::after {
     position: fixed;
     z-index: 100000;
     inset: 0;

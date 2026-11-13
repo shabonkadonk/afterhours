@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Camera, House, KeyRound, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
@@ -10,6 +10,15 @@ import { useInstalledApp } from "@/components/use-installed-app";
 type OrientationLock = ScreenOrientation & {
   lock?: (orientation: "portrait-primary") => Promise<void>;
 };
+
+function isMobileDevice() {
+  const browser = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  if (typeof browser.userAgentData?.mobile === "boolean") return browser.userAgentData.mobile;
+
+  const userAgent = navigator.userAgent;
+  const touchMac = /Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1;
+  return touchMac || /Android|iPhone|iPad|iPod|IEMobile|Windows Phone|Mobile/i.test(userAgent);
+}
 
 function AppNavigation() {
   const path = usePathname();
@@ -32,7 +41,16 @@ function AppNavigation() {
 export function InstalledAppShell({ children }: { children: React.ReactNode }) {
   const installed = useInstalledApp();
   const path = usePathname();
+  const router = useRouter();
+  const [mobileDevice, setMobileDevice] = useState<boolean | null>(null);
   const [online, setOnline] = useState(true);
+
+  useEffect(() => { setMobileDevice(isMobileDevice()); }, []);
+
+  const needsInstallation = installed === false && mobileDevice === true && path !== "/install";
+  useEffect(() => {
+    if (needsInstallation) router.replace("/install");
+  }, [needsInstallation, router]);
 
   useEffect(() => {
     if (!installed) return;
@@ -63,6 +81,7 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
     return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
   }, []);
 
+  if (needsInstallation) return null;
   if (installed !== true) return <>{children}</>;
   return <div className={`installed-app${path === "/rolls/new" ? " installed-app--no-scroll" : ""}`}>
     <header className="installed-topbar">

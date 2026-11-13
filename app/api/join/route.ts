@@ -2,8 +2,10 @@ import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { sendRollMemberJoinedPush } from "@/lib/web-push";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function sameOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -50,5 +52,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Too many code attempts. Wait 15 minutes and try again." }, { status: 429 });
   }
   if (!data?.roll_id) return NextResponse.json({ error: "That invitation is invalid, disabled, or the roll has closed." }, { status: 404 });
+  if (data.joined === true) await sendRollMemberJoinedPush(admin, data.roll_id, user.id);
   return NextResponse.json({ rollId: data.roll_id }, { headers: { "Cache-Control": "no-store" } });
 }
