@@ -1,5 +1,5 @@
 import "server-only";
-import webpush from "web-push";
+import { sendNotification, setVapidDetails } from "web-push";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type StoredSubscription = {
@@ -24,7 +24,7 @@ export async function sendRollRevealedPush(admin: SupabaseClient, rollId: string
   const subject = process.env.VAPID_SUBJECT!.trim();
 
   try {
-    webpush.setVapidDetails(subject, publicKey, privateKey);
+    setVapidDetails(subject, publicKey, privateKey);
   } catch (error) {
     console.error("Push notifications have invalid VAPID settings.", error instanceof Error ? error.message : "Unknown error");
     return;
@@ -60,7 +60,7 @@ export async function sendRollRevealedPush(admin: SupabaseClient, rollId: string
 
   await Promise.all((subscriptions ?? []).map(async (row: StoredSubscription) => {
     try {
-      await webpush.sendNotification({
+      await sendNotification({
         endpoint: row.endpoint,
         keys: { p256dh: row.p256dh_key, auth: row.auth_key },
       }, payload, { TTL: 60 * 60 * 24 });
