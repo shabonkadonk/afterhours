@@ -2,349 +2,26 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, ImagePlus, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Camera, Check, ImagePlus, RefreshCw, Upload, X } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useApp } from "@/components/app-provider";
 import { useAuth } from "@/components/auth-provider";
 import { PhotoCount } from "@/components/roll-ui";
-import { editPhotoWithFal, isFalConfigured } from "@/lib/fal-client";
+import { blobToDataUrl, createPhotoThumbnail, getPhotoSeed, PHOTO_FILTER_VERSION, processPhotoFile, type PhotoFilterId } from "@/lib/photo-processing";
 import { createPhotoId } from "@/lib/supabase/rolls";
 import { useInstalledApp } from "@/components/use-installed-app";
 
-type FilterPreset = { id: string; label: string; description: string; swatch: string };
+type FilterPreset = { id: PhotoFilterId; label: string; description: string; swatch: string };
 
 const FILTERS: FilterPreset[] = [
   { id: "original", label: "Original", description: "as it was", swatch: "linear-gradient(135deg,#81796b,#39352e 58%,#b4a48b)" },
-  { id: "y2k", label: "Y2K", description: "dark ambient + direct flash", swatch: "linear-gradient(135deg,#a33a79,#395b9c 55%,#65bed1)" },
+  { id: "y2k", label: "Y2K", description: "warm flash · violet shadows", swatch: "linear-gradient(135deg,#f08c66,#8b648b 48%,#30599a)" },
   { id: "flash", label: "Flash", description: "bright & bold", swatch: "linear-gradient(135deg,#f5c47e,#ad4236 52%,#241c22)" },
-  { id: "disposable", label: "Disposable", description: "warm & faded", swatch: "linear-gradient(135deg,#d1ab71,#76543d 55%,#36302a)" },
-  { id: "soft", label: "Soft focus", description: "hazy hours", swatch: "linear-gradient(135deg,#dfc7a0,#927f75 52%,#554958)" },
+  { id: "disposable", label: "Disposable", description: "35mm color · grain & leaks", swatch: "linear-gradient(135deg,#e4b16b,#917454 55%,#353c39)" },
+  { id: "rio", label: "Rio", description: "violet · magenta · coral", swatch: "linear-gradient(180deg,#514392 0%,#813d83 38%,#c72f7b 70%,#f35370 100%)" },
   { id: "mono", label: "B&W", description: "after the last song", swatch: "linear-gradient(135deg,#dad5ca,#77746f 55%,#272625)" },
 ];
-
-function applyFilter(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, filterId: string) {
-  if (filterId === "original") return;
-  if (filterId === "y2k") { applyDigicamTone(context, canvas); return; }
-  const image = context.getImageData(0, 0, canvas.width, canvas.height);
-  const pixels = image.data;
-  let seed = 814731;
-  const noise = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return (seed / 4294967296 - .5) * (filterId==="y2k"?30:18);
-  };
-  const clamp = (value: number) => Math.max(0, Math.min(255, value));
-
-  for (let index=0; index<pixels.length; index+=4) {
-    const r=pixels[index], g=pixels[index+1], b=pixels[index+2];
-    const luminance=.299*r+.587*g+.114*b;
-    const grain=filterId==="disposable"?noise():0;
-
-    if (filterId==="flash") {
-      const contrast=(value:number)=>(value-128)*1.22+128;
-      const luma=contrast(luminance);
-      pixels[index]=clamp((luma+(contrast(r)-luma)*1.17)*1.10+18);
-      pixels[index+1]=clamp((luma+(contrast(g)-luma)*1.17)*1.10+15);
-      pixels[index+2]=clamp((luma+(contrast(b)-luma)*1.17)*1.10+12);
-    } else if (filterId==="disposable") {
-      const sepiaR=.393*r+.769*g+.189*b;
-      const sepiaG=.349*r+.686*g+.168*b;
-      const sepiaB=.272*r+.534*g+.131*b;
-      pixels[index]=clamp((r*.22+sepiaR*.78)*.91+17+grain);
-      pixels[index+1]=clamp((g*.22+sepiaG*.78)*.91+12+grain);
-      pixels[index+2]=clamp((b*.22+sepiaB*.78)*.91+5+grain);
-    } else if (filterId==="soft") {
-      const softLuma=.299*r+.587*g+.114*b;
-      pixels[index]=clamp((softLuma+(r-softLuma)*.68)*.9+20);
-      pixels[index+1]=clamp((softLuma+(g-softLuma)*.68)*.9+17);
-      pixels[index+2]=clamp((softLuma+(b-softLuma)*.68)*.9+15);
-    } else if (filterId==="mono") {
-      const gray=clamp((luminance-128)*1.2+128);
-      pixels[index]=clamp(gray+2);
-      pixels[index+1]=gray;
-      pixels[index+2]=clamp(gray-2);
-    }
-  }
-  context.putImageData(image,0,0);
-}
-
-function applyDigicamTone(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-  const {width,height}=canvas;
-  const frame=context.getImageData(0,0,width,height);
-  const pixels=frame.data;
-  let seed=604213;
-  const clamp=(value:number)=>Math.max(0,Math.min(255,value));
-  for (let index=0;index<pixels.length;index+=4) {
-    const r=pixels[index],g=pixels[index+1],b=pixels[index+2];
-    const luminance=.299*r+.587*g+.114*b;
-    const cb=128-.168736*r-.331264*g+.5*b;
-    const cr=128+.5*r-.418688*g-.081312*b;
-    const skin=clamp((cb-62)/18)*clamp((142-cb)/18)*clamp((cr-124)/14)*clamp((190-cr)/14);
-    const contrast=(luminance-128)*1.04+128;
-    const highlightLift=0;
-    const skinLift=skin*clamp((150-luminance)/130)*2;
-    const shadowWarmth=clamp((85-luminance)/110);
-    const target=contrast+highlightLift+skinLift;
-    seed=(seed*1664525+1013904223)>>>0;
-    const grain=(seed/4294967296-.5)*(1.5+shadowWarmth*1.5);
-    pixels[index]=clamp(target+(r-luminance)*1.06+shadowWarmth*2+grain+2);
-    pixels[index+1]=clamp(target+(g-luminance)*1.04+grain*.35+1);
-    pixels[index+2]=clamp(target+(b-luminance)*1.05+shadowWarmth+grain+4);
-  }
-  context.putImageData(frame,0,0);
-}
-
-function applyDigicamTexture(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-  const {width,height}=canvas;
-  const frame=context.getImageData(0,0,width,height);
-  const source=frame.data.slice();
-  const pixels=frame.data;
-  let seed=921731;
-  const clamp=(value:number)=>Math.max(0,Math.min(255,value));
-
-  for (let y=0;y<height;y+=1) {
-    for (let x=0;x<width;x+=1) {
-      const index=(y*width+x)*4;
-      seed=(seed*1664525+1013904223)>>>0;
-      const grain=(seed/4294967296-.5)*3;
-      pixels[index]=clamp(source[index]+grain);
-      pixels[index+1]=clamp(source[index+1]+grain*.35);
-      pixels[index+2]=clamp(source[index+2]+grain);
-    }
-  }
-  context.putImageData(frame,0,0);
-}
-
-function addHighlightBloom(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-  const {width,height}=canvas;
-  const source=context.getImageData(0,0,width,height);
-  const mask=document.createElement("canvas");
-  const glow=document.createElement("canvas");
-  mask.width=glow.width=width;
-  mask.height=glow.height=height;
-  const maskContext=mask.getContext("2d");
-  const glowContext=glow.getContext("2d");
-  if (!maskContext||!glowContext) return;
-
-  const highlights=maskContext.createImageData(width,height);
-  for (let index=0;index<source.data.length;index+=4) {
-    const luminance=.299*source.data[index]+.587*source.data[index+1]+.114*source.data[index+2];
-    const alpha=Math.max(0,Math.min(1,(luminance-220)/35))*.32;
-    highlights.data[index]=source.data[index];
-    highlights.data[index+1]=source.data[index+1];
-    highlights.data[index+2]=source.data[index+2];
-    highlights.data[index+3]=alpha*255;
-  }
-  maskContext.putImageData(highlights,0,0);
-  glowContext.filter=`blur(${Math.max(4,Math.round(width*.012))}px)`;
-  glowContext.drawImage(mask,0,0);
-  context.save();
-  context.globalCompositeOperation="screen";
-  context.globalAlpha=.22;
-  context.drawImage(glow,0,0);
-  context.restore();
-}
-
-function getDateStampParts(file: File, yearMode: "current" | "2006") {
-  const sourceDate = new Date(file.lastModified || Date.now());
-  const year = yearMode === "2006" ? "2006" : String(new Date().getFullYear());
-  const month = String(sourceDate.getMonth()+1).padStart(2,"0");
-  const day = String(sourceDate.getDate()).padStart(2,"0");
-  const formattedTime = new Intl.DateTimeFormat("en-US",{hour:"2-digit",minute:"2-digit",hour12:true}).format(sourceDate).toUpperCase();
-  const [clock,period] = formattedTime.split(" ");
-  const [hour,minute] = clock.split(":");
-  const yearShort=year.slice(-2);
-  return { groups:[yearShort,month,day,hour,minute], period };
-}
-
-function drawDateStamp(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, file: File, yearMode: "current" | "2006") {
-  const {groups,period}=getDateStampParts(file,yearMode);
-  const size = Math.max(12,Math.min(32,canvas.width*.022));
-  const marginX = Math.max(12,canvas.width*.045);
-  const marginY = Math.max(10,canvas.height*.04);
-  const digitWidth = size*.62;
-  const bar = size*.105;
-  const digitGap = size*.12;
-  const groupGap = size*.42;
-  const dateTimeGap = size*.56;
-  const colonWidth = size*.28;
-  const periodGap = size*.12;
-  const apostropheWidth = size*.3;
-  context.save();
-  context.font=`bold ${size*.4}px "Courier New", monospace`;
-  const periodWidth=context.measureText(period).width;
-  context.restore();
-  const stampWidth = apostropheWidth + size*.08 + groups.reduce((total,group)=>total+group.length*(digitWidth+digitGap)-digitGap,0) + groupGap*2 + dateTimeGap + colonWidth + periodGap + periodWidth;
-  const fit = Math.min(1,(canvas.width-marginX*2)/stampWidth);
-  const left = canvas.width-marginX-stampWidth*fit;
-  const top = canvas.height-marginY-size*fit;
-  const digitSegments: Record<string,string[]> = {
-    "0":["a","b","c","d","e","f"], "1":["b","c"], "2":["a","b","g","e","d"],
-    "3":["a","b","g","c","d"], "4":["f","g","b","c"], "5":["a","f","g","c","d"],
-    "6":["a","f","g","e","c","d"], "7":["a","b","c"], "8":["a","b","c","d","e","f","g"],
-    "9":["a","b","c","d","f","g"],
-  };
-  const drawDigits = () => {
-    context.lineWidth=bar;
-    context.lineCap="butt";
-    context.lineJoin="miter";
-    context.strokeStyle="#e99a5e";
-    let x=0;
-    const drawDigit = (digit:string) => {
-      const middle=size/2;
-      const segments:Record<string,[number,number,number,number]>={
-        a:[bar/2,bar/2,digitWidth-bar/2,bar/2], b:[digitWidth-bar/2,bar/2,digitWidth-bar/2,middle-bar/2],
-        c:[digitWidth-bar/2,middle+bar/2,digitWidth-bar/2,size-bar/2], d:[bar/2,size-bar/2,digitWidth-bar/2,size-bar/2],
-        e:[bar/2,middle+bar/2,bar/2,size-bar/2], f:[bar/2,bar/2,bar/2,middle-bar/2],
-        g:[bar/2,middle,digitWidth-bar/2,middle],
-      };
-      for (const key of digitSegments[digit]??[]) {
-        const [x1,y1,x2,y2]=segments[key];
-        context.beginPath(); context.moveTo(x+x1,y1); context.lineTo(x+x2,y2); context.stroke();
-      }
-      x+=digitWidth+digitGap;
-    };
-    context.beginPath(); context.moveTo(size*.1,size*.12); context.lineTo(apostropheWidth*.72,size*.3); context.stroke();
-    x=apostropheWidth+size*.08;
-    for (let index=0;index<groups.length;index+=1) {
-      for (const digit of groups[index]) drawDigit(digit);
-      if (index===0||index===1) x+=groupGap-digitGap;
-      else if (index===2) x+=dateTimeGap-digitGap;
-      else if (index===3) {
-        const colonX=x;
-        context.fillStyle="#e99a5e";
-        context.beginPath(); context.arc(colonX+colonWidth*.5,size*.35,bar*.42,0,Math.PI*2); context.fill();
-        context.beginPath(); context.arc(colonX+colonWidth*.5,size*.72,bar*.42,0,Math.PI*2); context.fill();
-        x+=colonWidth-digitGap;
-      }
-    }
-    x+=periodGap-digitGap;
-    context.font=`bold ${size*.4}px "Courier New", monospace`;
-    context.textBaseline="bottom";
-    context.fillText(period,x,size*.92);
-  };
-  context.save();
-  context.translate(left,top);
-  context.scale(fit,fit);
-  context.globalAlpha=.88;
-  context.shadowColor="rgba(230,116,62,.55)";
-  context.shadowBlur=size*.09;
-  drawDigits();
-  context.restore();
-}
-
-function compressPhoto(file: File, filter: FilterPreset, stampYear: "current" | "2006" | null, skipLocalFilter: boolean): Promise<{ data: string; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const sourceUrl = URL.createObjectURL(file);
-    image.onload = () => {
-      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(image.naturalWidth * scale);
-      canvas.height = Math.round(image.naturalHeight * scale);
-      const context = canvas.getContext("2d");
-      if (!context) { URL.revokeObjectURL(sourceUrl); reject(new Error("This browser couldn’t prepare the image.")); return; }
-      if (filter.id==="soft") context.filter="blur(1.4px)";
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      context.filter = "none";
-      // Keep flash character in the color curve; bloom was lifting already-bright
-      // rooms and creating a pale halo around the center of the frame.
-      if (!skipLocalFilter) applyFilter(context,canvas,filter.id);
-      if (!skipLocalFilter && filter.id==="y2k") applyDigicamTexture(context,canvas);
-      if (stampYear) drawDateStamp(context,canvas,file,stampYear);
-      URL.revokeObjectURL(sourceUrl);
-      let quality = .82;
-      let data = canvas.toDataURL("image/jpeg", quality);
-      while (data.length > 560_000 && quality > .4) { quality -= .04; data = canvas.toDataURL("image/jpeg", quality); }
-      if (data.length > 1_100_000) { reject(new Error("This photo is too large for the local demo. Try a smaller image.")); return; }
-      resolve({ data, width: canvas.width, height: canvas.height });
-    };
-    image.onerror = () => { URL.revokeObjectURL(sourceUrl); reject(new Error("That image couldn’t be opened. Try another photo.")); };
-    image.src = sourceUrl;
-  });
-}
-
-function sampleLuminance(image: CanvasImageSource): number {
-  const sample = document.createElement("canvas");
-  sample.width = sample.height = 24;
-  const context = sample.getContext("2d", { willReadFrequently: true });
-  if (!context) return 0;
-  context.drawImage(image, 0, 0, 24, 24);
-  const { data } = context.getImageData(0, 0, 24, 24);
-  let total = 0;
-  for (let index = 0; index < data.length; index += 4) total += .299 * data[index] + .587 * data[index + 1] + .114 * data[index + 2];
-  return total / (data.length / 4);
-}
-
-function dataUrlLuminance(dataUrl: string): Promise<number> {
-  return new Promise((resolve) => {
-    const source = new Image();
-    source.onload = () => resolve(sampleLuminance(source));
-    source.onerror = () => resolve(0);
-    source.src = dataUrl;
-  });
-}
-
-function finishFalPhoto(dataUrl: string, sourceData: string, file: File, stampYear: "current" | "2006" | null): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = async () => {
-      try {
-      const [editedLuminance, originalLuminance] = await Promise.all([
-        Promise.resolve(sampleLuminance(image)),
-        dataUrlLuminance(sourceData),
-      ]);
-      // FLUX occasionally returns a nearly black frame for otherwise visible
-      // input. Keep that frame usable by falling back to the local Y2K recipe.
-      const almostBlack = editedLuminance < 4 && originalLuminance > 4;
-      const severelyUnderexposed = originalLuminance > 35 && editedLuminance < Math.max(8, originalLuminance * .12);
-      if (almostBlack || severelyUnderexposed) {
-        const fallback = await compressPhoto(file, FILTERS[1], stampYear, false);
-        resolve(fallback.data);
-        return;
-      }
-      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(image.naturalWidth * scale);
-      canvas.height = Math.round(image.naturalHeight * scale);
-      const context = canvas.getContext("2d");
-      if (!context) { reject(new Error("This browser could not prepare FLUX’s edited image.")); return; }
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      applyDigicamTexture(context, canvas);
-      if (stampYear) drawDateStamp(context, canvas, file, stampYear);
-      let quality = .86;
-      let output = canvas.toDataURL("image/jpeg", quality);
-      while (output.length > 560_000 && quality > .4) {
-        quality -= .04;
-        output = canvas.toDataURL("image/jpeg", quality);
-      }
-      if (output.length > 1_100_000) { reject(new Error("The edited photo is too large for local browser storage.")); return; }
-      resolve(output);
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error("Could not prepare FLUX’s edited image."));
-      }
-    };
-    image.onerror = () => reject(new Error("Could not read FLUX’s edited image."));
-    image.src = dataUrl;
-  });
-}
-
-function createPhotoThumbnail(dataUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      const scale = Math.min(1, 560 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext("2d");
-      if (!context) { resolve(""); return; }
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", .72));
-    };
-    image.onerror = () => resolve("");
-    image.src = dataUrl;
-  });
-}
 
 export default function CapturePage() {
   const { id } = useParams<{ id: string }>();
@@ -355,33 +32,59 @@ export default function CapturePage() {
   const roll = rolls.find((item)=>item.id===id);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [cameraBusy, setCameraBusy] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const previewUrls = useRef<string[]>([]);
-  const preparedUpload = useRef<{ key: string; additions: { uploadId: string; src: string; thumbnailSrc: string; caption: string; filter: string; filterVersion: number; dateStampYear?: "current" | "2006" }[] } | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
+  const preparedUpload = useRef<{ key: string; additions: { uploadId: string; src: string; thumbnailSrc: string; caption: string; filter: string; filterVersion: number }[] } | null>(null);
+  const ownedBlobUrls = useRef<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [filterId, setFilterId] = useState("original");
-  const [dateStampEnabled, setDateStampEnabled] = useState(true);
-  const [dateStampYear, setDateStampYear] = useState<"current" | "2006">("2006");
+  const [filterId, setFilterId] = useState<PhotoFilterId>("original");
+  const [dateStampEnabled, setDateStampEnabled] = useState(false);
+  const [dateStampOrientation, setDateStampOrientation] = useState<"horizontal" | "vertical">("vertical");
+  const [dateStampYear, setDateStampYear] = useState<"photo" | "2006">("photo");
   const [caption, setCaption] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingStage, setSavingStage] = useState<"processing" | "uploading">("processing");
   const [progress, setProgress] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
-  const [falStatus, setFalStatus] = useState<"checking" | "connected" | "local">("checking");
   const [smallScreen, setSmallScreen] = useState(false);
   const [captureStep, setCaptureStep] = useState(0);
   const [captionStepReady, setCaptionStepReady] = useState(false);
   const useWizard = installed === true || smallScreen;
   const activeFilter = FILTERS.find((filter)=>filter.id===filterId) ?? FILTERS[0];
-  useEffect(()=>()=>{previewUrls.current.forEach((url)=>URL.revokeObjectURL(url));},[]);
-  useEffect(()=>{let current=true; void isFalConfigured().then((configured)=>{if(current)setFalStatus(configured?"connected":"local");}); return ()=>{current=false;};},[]);
+  const cloudUpload = Boolean(configured && user);
+  useEffect(()=>()=>{
+    previewUrls.current.forEach((url)=>URL.revokeObjectURL(url));
+    ownedBlobUrls.current.forEach((url)=>URL.revokeObjectURL(url));
+  },[]);
+  useEffect(()=>()=>{
+    cameraRequestRef.current+=1;
+    cameraStreamRef.current?.getTracks().forEach((track)=>track.stop());
+    cameraStreamRef.current=null;
+  },[]);
+  useEffect(()=>{
+    const video=cameraVideoRef.current;
+    if(!cameraOpen||!cameraStream||!video) return;
+    video.srcObject=cameraStream;
+    void video.play().catch(()=>setCameraError("The camera preview could not start. Try again or choose photos instead."));
+    return ()=>{video.pause();video.srcObject=null;};
+  },[cameraOpen,cameraStream]);
   useEffect(()=>{
     if(!useWizard||captureStep!==2){setCaptionStepReady(false);return;}
     const timeout=window.setTimeout(()=>setCaptionStepReady(true),250);
     return ()=>window.clearTimeout(timeout);
   },[useWizard,captureStep]);
   useEffect(()=>{
-    const media=window.matchMedia("(max-width: 767px), (pointer: coarse)");
+    const media=window.matchMedia("(max-width: 1023px)");
     const update=()=>setSmallScreen(media.matches);
     update();
     media.addEventListener?.("change",update);
@@ -426,6 +129,101 @@ export default function CapturePage() {
     setSelectedIndex(files.length);
   }
 
+  function addCameraFile(file: File) {
+    if(!roll) return;
+    const room=Math.max(0,roll.photoLimit-roll.photos.length-files.length);
+    if(room===0) { setCameraError("This roll is full. Remove a frame before taking another photo."); return; }
+    const url=URL.createObjectURL(file);
+    previewUrls.current=[...previewUrls.current,url];
+    setFiles((current)=>[...current,file]);
+    setPreviews((current)=>[...current,url]);
+    setSelectedIndex(files.length);
+    setError("");
+    setCameraError("");
+  }
+
+  function stopCamera() {
+    cameraRequestRef.current+=1;
+    cameraStreamRef.current?.getTracks().forEach((track)=>track.stop());
+    cameraStreamRef.current=null;
+    setCameraStream(null);
+    setCameraOpen(false);
+    setCameraBusy(false);
+    setCameraReady(false);
+    setCameraError("");
+  }
+
+  async function startCamera(facing: "environment" | "user" = cameraFacing) {
+    if(saving) return;
+    const requestId=++cameraRequestRef.current;
+    setCameraOpen(true);
+    setCameraError("");
+    setCameraReady(false);
+    setCameraBusy(true);
+    cameraStreamRef.current?.getTracks().forEach((track)=>track.stop());
+    cameraStreamRef.current=null;
+    setCameraStream(null);
+    setCameraFacing(facing);
+    if(!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Live camera access needs HTTPS and a supported browser. You can choose photos instead.");
+      setCameraBusy(false);
+      return;
+    }
+    try {
+      const stream=await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}},
+      });
+      if(requestId!==cameraRequestRef.current) { stream.getTracks().forEach((track)=>track.stop()); return; }
+      cameraStreamRef.current=stream;
+      setCameraStream(stream);
+    } catch(caught) {
+      if(requestId!==cameraRequestRef.current) return;
+      const name=caught instanceof Error?caught.name:"";
+      setCameraError(name==="NotAllowedError"
+        ?"Camera permission was blocked. Allow camera access in your browser settings, then try again."
+        :name==="NotFoundError"
+          ?"No camera was found. You can choose photos instead."
+          :name==="NotReadableError"
+            ?"The camera is being used by another app. Close it and try again."
+            :"Couldn’t open the camera. Check camera permission or choose photos instead.");
+    } finally {
+      if(requestId===cameraRequestRef.current) setCameraBusy(false);
+    }
+  }
+
+  async function captureCameraFrame() {
+    const video=cameraVideoRef.current;
+    if(!video||!cameraReady||cameraBusy||!roll) return;
+    if(roll.photos.length+files.length>=roll.photoLimit) {
+      setCameraError("This roll is full. Remove a frame before taking another photo.");
+      return;
+    }
+    setCameraBusy(true);
+    setCameraError("");
+    try {
+      const width=video.videoWidth;
+      const height=video.videoHeight;
+      if(!width||!height) throw new Error("The camera is still getting ready. Try again in a moment.");
+      const scale=Math.min(1,3200/Math.max(width,height));
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.round(width*scale);
+      canvas.height=Math.round(height*scale);
+      const context=canvas.getContext("2d");
+      if(!context) throw new Error("Couldn’t capture this frame. Try again.");
+      if(cameraFacing==="user") { context.translate(canvas.width,0); context.scale(-1,1); }
+      context.drawImage(video,0,0,canvas.width,canvas.height);
+      const blob=await new Promise<Blob|null>((resolve)=>canvas.toBlob(resolve,"image/jpeg",0.94));
+      if(!blob) throw new Error("Couldn’t save this frame. Try again.");
+      const capturedAt=Date.now();
+      addCameraFile(new File([blob],`afterhours-camera-${capturedAt}.jpg`,{type:"image/jpeg",lastModified:capturedAt}));
+    } catch(caught) {
+      setCameraError(caught instanceof Error?caught.message:"Couldn’t capture this photo. Try again.");
+    } finally {
+      setCameraBusy(false);
+    }
+  }
+
   function removeFile(index: number) {
     const url=previews[index];
     if (url) { URL.revokeObjectURL(url); previewUrls.current=previewUrls.current.filter((item)=>item!==url); }
@@ -445,25 +243,41 @@ export default function CapturePage() {
     setProgress(0);
     setProgressPercent(0);
     try {
-      const key = JSON.stringify({ roll: roll.id, files: files.map((file) => [file.name, file.size, file.lastModified]), filterId, dateStampEnabled, dateStampYear, caption: caption.trim() });
+      const imprintAllowed = filterId === "y2k" || filterId === "flash";
+      const key = JSON.stringify({ version: PHOTO_FILTER_VERSION, roll: roll.id, files: files.map((file) => [file.name, file.size, file.lastModified]), filterId, dateStampEnabled: imprintAllowed&&dateStampEnabled, dateStampOrientation: imprintAllowed&&dateStampEnabled?dateStampOrientation:undefined, dateStampYear: imprintAllowed&&dateStampEnabled?dateStampYear:undefined, caption: caption.trim(), cloudUpload });
       const additions = preparedUpload.current?.key === key ? [...preparedUpload.current.additions] : [];
       setProgress(additions.length);
       setProgressPercent(Math.round((additions.length/files.length)*82));
       for (let index=additions.length;index<files.length;index+=1) {
         setProgress(index+1);
         setProgressPercent(Math.round((index/files.length)*82));
-        const useFal=falStatus==="connected"&&filterId==="y2k";
-        const includeDateStamp=filterId==="y2k"&&dateStampEnabled;
-        const source=await compressPhoto(files[index],activeFilter,useFal?null:(includeDateStamp?dateStampYear:null),useFal);
-        const editedImage=useFal?await editPhotoWithFal(source.data,source.width,source.height):source.data;
-        const editedData=useFal?await finishFalPhoto(editedImage,source.data,files[index],includeDateStamp?dateStampYear:null):editedImage;
-        const thumbnailSrc=await createPhotoThumbnail(editedData);
-        additions.push({uploadId:createPhotoId(),src:editedData,thumbnailSrc,caption:caption.trim(),filter:activeFilter.label,filterVersion:5,dateStampYear:includeDateStamp?dateStampYear:undefined});
+        const seed=await getPhotoSeed(files[index]);
+        const imageBlob=await processPhotoFile(files[index],{
+          filterId,
+          seed,
+          dateStamp:(filterId==="y2k"||filterId==="flash")&&dateStampEnabled,
+          dateStampOrientation,
+          dateStampYear,
+          maxDimension:cloudUpload?3200:2560,
+          maxPixels:cloudUpload?8_000_000:5_000_000,
+          maxBytes:cloudUpload?4_800_000:430_000,
+          quality:cloudUpload?0.92:0.87,
+        });
+        const thumbnailBlob=await createPhotoThumbnail(imageBlob);
+        const imageUrl=cloudUpload?URL.createObjectURL(imageBlob):await blobToDataUrl(imageBlob);
+        const thumbnailUrl=cloudUpload?URL.createObjectURL(thumbnailBlob):await blobToDataUrl(thumbnailBlob);
+        if(cloudUpload)ownedBlobUrls.current.push(imageUrl,thumbnailUrl);
+        additions.push({uploadId:createPhotoId(),src:imageUrl,thumbnailSrc:thumbnailUrl,caption:caption.trim(),filter:activeFilter.label,filterVersion:PHOTO_FILTER_VERSION});
         preparedUpload.current = { key, additions: [...additions] };
         setProgressPercent(Math.round(((index+1)/files.length)*82));
       }
       setSavingStage("uploading");
       await addPhotos(roll.id,additions);
+      for(const item of additions){
+        if(item.src.startsWith("blob:"))URL.revokeObjectURL(item.src);
+        if(item.thumbnailSrc.startsWith("blob:"))URL.revokeObjectURL(item.thumbnailSrc);
+      }
+      ownedBlobUrls.current=ownedBlobUrls.current.filter((url)=>!url.startsWith("blob:")||!additions.some((item)=>item.src===url||item.thumbnailSrc===url));
       preparedUpload.current = null;
       setProgressPercent(100);
       router.push(`/rolls/${roll.id}`);
@@ -476,11 +290,10 @@ export default function CapturePage() {
   if (!roll) return <main className="min-h-screen px-5 py-28 text-center"><p className="font-display text-3xl">That roll isn’t in this browser.</p><Link href="/dashboard" className="button-secondary mt-6">Back to your rolls</Link></main>;
   if (roll.status !== "active") return <main className="min-h-screen px-5 py-28 text-center"><p className="eyebrow">THIS ROLL IS CLOSED</p><p className="mt-3 font-display text-3xl">The photos are ready.</p><Link href={`/rolls/${roll.id}/reveal`} className="button-primary mt-6">Open the gallery</Link></main>;
 
-  return <main className={`mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16${useWizard?" capture-wizard":""}`} data-capture-step={captureStep}><div className={useWizard?"capture-wizard__inner":"mx-auto max-w-[940px]"}>
+  return <><main className={`mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16${useWizard?" capture-wizard":" capture-desktop-page"}`} data-capture-step={captureStep}><div className={useWizard?"capture-wizard__inner":"capture-desktop-page__inner mx-auto max-w-[940px]"}>
     <Link href={`/rolls/${roll.id}`} className={`mt-8 inline-flex items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]${useWizard?" capture-wizard__desktop-back":""}`}><ArrowLeft size={13}/> BACK TO {roll.name.toUpperCase()}</Link>
-    <div className={`mt-6 grid gap-6 lg:grid-cols-[.9fr_1.1fr]${useWizard?" capture-wizard__layout":""}`}>
+    <div className={`mt-6 grid gap-6 lg:grid-cols-[.9fr_1.1fr]${useWizard?" capture-wizard__layout":" capture-desktop-page__layout"}`}>
       <div className={useWizard?"capture-wizard__intro":""}><p className="eyebrow mb-3">YOUR TURN BEHIND THE LENS</p><h1 className="font-display text-5xl leading-[.94] tracking-[-.055em]">A few frames<br/><i className="text-[#b54b40]">from tonight.</i></h1><p className="mt-5 max-w-sm text-sm leading-6 text-[#918a7e]">Choose a batch from your camera roll, pick a look, and add a note for later. A little blurry is probably right.</p><div className="mt-6 inline-flex border border-white/10 bg-[#1a1815] px-3 py-2"><PhotoCount roll={roll}/><span className="mx-2 text-[#6d675e]">·</span><span className="font-mono text-[9px] text-[#797267]">{roll.photoLimit-roll.photos.length} LEFT</span></div>
-        <div className="mt-8 hidden border-t border-white/10 pt-5 lg:block"><p className="font-mono text-[9px] leading-5 text-[#777168]">{falStatus==="connected"?"FAL.AI FLUX.2 Flash EDITS THE SOURCE PHOTO. THE AMBER SEVEN-SEGMENT IMPRINT IS ADDED AFTER FAL EDITING; FINISHED PHOTOS STAY IN THIS BROWSER.":"PHOTOS ARE RESIZED AND GIVEN A BASIC CAMERA LOOK IN YOUR BROWSER, THEN STORED LOCALLY FOR THIS PROTOTYPE."}</p></div>
       </div>
       <form onSubmit={submit} className={`flow-panel border border-white/10 bg-[#1a1815] p-4 sm:p-6${useWizard?" capture-wizard__form":""}`}>
         {useWizard&&<div className="capture-wizard__top"><div className="capture-wizard__topline">{captureStep===0?<Link href={`/rolls/${roll.id}`} className="capture-wizard__back"><ArrowLeft size={15}/> Roll</Link>:<button type="button" onClick={()=>{setError("");setCaptureStep((step)=>step-1);}} className="capture-wizard__back"><ArrowLeft size={15}/> Back</button>}<span>{String(captureStep+1).padStart(2,"0")} <i>/</i> 03</span></div><div className="capture-wizard__progress"><span style={{width:`${((captureStep+1)/3)*100}%`}}/></div><div className="capture-wizard__title"><p className="eyebrow">{captureStep===0?"FIRST, THE FRAMES":captureStep===1?"MAKE IT YOURS":"ONE LAST THING"}</p><h1 className="font-display">{captureStep===0?"Choose photos.":captureStep===1?"Pick a look.":"Leave a note."}</h1></div></div>}
@@ -489,39 +302,69 @@ export default function CapturePage() {
           {files.length ? <><img src={previews[selectedIndex]} alt={`Original preview of ${files[selectedIndex]?.name ?? "your selected photo"}`} className="absolute inset-0 h-full w-full bg-black/30" style={{objectFit:"contain"}}/><div className="absolute inset-x-0 bottom-0 z-[1] flex items-end justify-between bg-gradient-to-t from-black/85 to-transparent px-4 pb-4 pt-12"><div><span className="font-mono text-[9px] tracking-[.12em] text-white/80">ORIGINAL · FRAME {String(selectedIndex+1).padStart(2,"0")}</span><p className="mt-1 max-w-[220px] truncate text-xs text-white/70">{files[selectedIndex]?.name}</p></div><span className="font-mono text-[9px] text-white/75">{files.length} SELECTED</span></div></> : <div className="px-5 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center border border-white/15 text-[#b44f44]"><ImagePlus size={20}/></div><p className="mt-4 font-display text-xl">Choose a few frames.</p><p className="mt-1 text-xs text-[#7f786e]">Select multiple photos at once, up to {roll.photoLimit-roll.photos.length} remaining.</p></div>}
         </div>
         {files.length>0&&<div className={`mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6${useWizard?" capture-wizard__thumbs":""}`}>{files.map((item,index)=><div key={`${item.name}-${item.lastModified}-${index}`} style={{animationDelay:`${Math.min(index*45,270)}ms`}} className={`photo-tile relative aspect-square border ${index===selectedIndex?"border-[#c55448]":"border-white/10"}`}><button type="button" disabled={saving} onClick={()=>setSelectedIndex(index)} aria-label={`Preview photo ${index+1}: ${item.name}`} className="photo-frame h-full w-full disabled:cursor-wait"><img src={previews[index]} alt="" style={{objectFit:"cover"}}/><span className="absolute bottom-1 left-1 z-[2] bg-black/65 px-1.5 py-0.5 font-mono text-[8px] text-white">{String(index+1).padStart(2,"0")}</span></button><button type="button" disabled={saving} onClick={()=>removeFile(index)} aria-label={`Remove photo ${index+1}`} className="absolute -right-1.5 -top-1.5 z-[3] flex h-7 w-7 items-center justify-center border border-white/25 bg-[#171613] text-[#c9c1b4] hover:text-white disabled:opacity-50"><X size={11}/></button></div>)}</div>}
-        <div className="mt-4 grid grid-cols-2 gap-2"><label className={`button-primary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><Upload size={14}/> Choose photos<input type="file" accept="image/*" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label><label className={`button-secondary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><ImagePlus size={14}/> Open camera<input type="file" accept="image/*" capture="environment" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label></div>
+        <div className="capture-upload-actions mt-4 grid grid-cols-2 gap-2"><label className={`button-primary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><Upload size={14}/> Choose photos<input ref={photoInputRef} type="file" accept="image/*" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label><button type="button" disabled={saving} onClick={()=>void startCamera("environment")} className={`capture-camera-action button-secondary relative min-h-12 ${saving?"cursor-wait opacity-60":""}`}><Camera size={14}/> Open camera</button></div>
         </section>
         <section className="capture-wizard__step capture-wizard__step--look" data-y2k-selected={filterId==="y2k"} style={useWizard?{display:captureStep===1?"flex":"none",flexDirection:"column"}:undefined}>
-        <fieldset disabled={saving} className="capture-wizard__look-fieldset disabled:opacity-70"><legend className="eyebrow">PICK A LOOK <span className="ml-1 text-[#6d675e]">· REVEALS WHEN THE ROLL ENDS</span></legend><div className="capture-wizard__look-grid" style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gridTemplateRows:filterId==="y2k"?"repeat(2, 78px)":"repeat(2, minmax(0, 1fr))",gridTemplateAreas:'"original y2k flash" "disposable soft mono"'}}>{FILTERS.map((filter)=><button type="button" key={filter.id} data-filter={filter.id} onClick={()=>setFilterId(filter.id)} aria-pressed={filter.id===filterId} style={{gridArea:filter.id}} className={`capture-wizard__look-card choice-card border p-1.5 text-left ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="capture-wizard__look-swatch mb-2 block" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div><p className="capture-wizard__look-note border-l border-[#a33a32]/60 pl-3 font-mono text-[8px] leading-4 tracking-[.04em] text-[#8c8377]">{filterId==="y2k"?"Y2K USES FAL.AI FLUX.2 Flash TO EDIT THE FULL PHOTO WITH A CCD-ERA DIRECT-FLASH LOOK. NO OVAL MASK OR VIGNETTE.":"THE ORIGINAL STAYS IN PREVIEW. YOUR SELECTED LOOK WILL APPEAR AFTER THE ROLL ENDS."}</p></fieldset>
-        {filterId==="y2k"&&<section className="mt-6 border border-white/10 bg-[#201d19] p-3 sm:p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center border border-[#d7963a]/35 text-[#efb653]"><CalendarClock size={16}/></span><div><p className="eyebrow">CYBERSHOT DATE + TIME</p><p className="mt-1 text-[10px] leading-4 text-[#8c8377]">Amber timestamp, burned into each final frame.</p></div></div>
-            <button type="button" disabled={saving} aria-pressed={dateStampEnabled} onClick={()=>setDateStampEnabled((current)=>!current)} className={`min-h-10 shrink-0 border px-3 py-2 font-mono text-[9px] tracking-[.12em] transition disabled:opacity-50 ${dateStampEnabled?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>{dateStampEnabled?"STAMP ON":"STAMP OFF"}</button>
+        <fieldset disabled={saving} className="capture-wizard__look-fieldset disabled:opacity-70"><legend className="eyebrow">PICK A LOOK</legend><div className="capture-wizard__look-grid" style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gridTemplateRows:filterId==="y2k"?"repeat(2, 78px)":"repeat(2, minmax(0, 1fr))",gridTemplateAreas:'"original y2k flash" "disposable rio mono"'}}>{FILTERS.map((filter)=><button type="button" key={filter.id} data-filter={filter.id} onClick={()=>setFilterId(filter.id)} aria-pressed={filter.id===filterId} style={{gridArea:filter.id}} className={`capture-wizard__look-card choice-card border p-1.5 text-left ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="capture-wizard__look-swatch mb-2 block" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div></fieldset>
+        {(filterId==="y2k"||filterId==="flash")&&<section className="date-imprint-card mt-6 border border-white/10 bg-[#201d19] p-3 sm:p-4">
+          <div className="date-imprint-header">
+            <div className="date-imprint-heading"><span className="date-imprint-icon"><CalendarClock size={16}/></span><p className="date-imprint-title eyebrow">{filterId==="flash"?"FLASH DATE IMPRINT":"Y2K DATE STAMP"}</p></div>
+            <button type="button" disabled={saving} aria-pressed={dateStampEnabled} onClick={()=>setDateStampEnabled((current)=>!current)} className={`date-imprint-toggle border font-mono tracking-[.1em] transition disabled:opacity-50 ${dateStampEnabled?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>{dateStampEnabled?"STAMP ON":"STAMP OFF"}</button>
+            <p className="date-imprint-description text-[10px] leading-4 text-[#8c8377]">Keep the photo date, or use its month and day with vintage '06.</p>
           </div>
-        {dateStampEnabled&&<div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={saving} aria-pressed={dateStampYear==="current"} onClick={()=>setDateStampYear("current")} className={`min-h-[60px] border px-3 py-3 text-left transition disabled:opacity-50 ${dateStampYear==="current"?"border-[#d7963a]/50 bg-[#d7963a]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="block font-mono text-[9px] tracking-[.1em] text-[#e9c681]">CURRENT YEAR</span><span className="mt-1 block text-[9px] text-[#81796e]">Keep this year on the stamp</span></button><button type="button" disabled={saving} aria-pressed={dateStampYear==="2006"} onClick={()=>setDateStampYear("2006")} className={`min-h-[60px] border px-3 py-3 text-left transition disabled:opacity-50 ${dateStampYear==="2006"?"border-[#d7963a]/50 bg-[#d7963a]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="block font-mono text-[9px] tracking-[.1em] text-[#e9c681]">SET YEAR TO 2006</span><span className="mt-1 block text-[9px] text-[#81796e]">Early-digital-camera nostalgia</span></button></div>}
-          <p className="mt-3 font-mono text-[8px] leading-4 text-[#756e63]">THE IMPRINT IS HIDDEN WITH THE EDITED PHOTO UNTIL THE ROLL REVEALS.</p>
+          <div className="date-imprint-settings">
+            <div className="date-imprint-option-group"><span className="date-imprint-label">ORIENTATION</span><div className="date-imprint-group-buttons">
+              <button type="button" disabled={saving} aria-pressed={dateStampOrientation==="horizontal"} onClick={()=>{setDateStampOrientation("horizontal");setDateStampEnabled(true);}} className={`date-imprint-choice border font-mono transition disabled:opacity-50 ${dateStampOrientation==="horizontal"?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>HORIZONTAL</button>
+              <button type="button" disabled={saving} aria-pressed={dateStampOrientation==="vertical"} onClick={()=>{setDateStampOrientation("vertical");setDateStampEnabled(true);}} className={`date-imprint-choice border font-mono transition disabled:opacity-50 ${dateStampOrientation==="vertical"?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>VERTICAL · LEFT EDGE</button>
+            </div></div>
+            <div className="date-imprint-option-group"><span className="date-imprint-label">YEAR</span><div className="date-imprint-group-buttons">
+              <button type="button" disabled={saving} aria-pressed={dateStampYear==="photo"} onClick={()=>{setDateStampYear("photo");setDateStampEnabled(true);}} className={`date-imprint-choice border font-mono transition disabled:opacity-50 ${dateStampYear==="photo"?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>PHOTO YEAR</button>
+              <button type="button" disabled={saving} aria-pressed={dateStampYear==="2006"} onClick={()=>{setDateStampYear("2006");setDateStampEnabled(true);}} className={`date-imprint-choice border font-mono transition disabled:opacity-50 ${dateStampYear==="2006"?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>VINTAGE 2006</button>
+            </div></div>
+          </div>
+          <p className="date-imprint-footnote font-mono">THE IMPRINT IS BAKED INTO THE EXPORTED PHOTO.</p>
         </section>}
         </section>
         <section className="capture-wizard__step capture-wizard__step--finish" style={useWizard?{display:captureStep===2?"flex":"none",flexDirection:"column"}:undefined}>
         <label htmlFor="caption" className="eyebrow mt-6 block">CAPTION FOR THESE FRAMES <span className="text-[#6d675e]">(OPTIONAL · SAME ON ALL)</span></label><textarea id="caption" rows={2} maxLength={120} disabled={saving} value={caption} onChange={(event)=>setCaption(event.target.value)} placeholder="what were we laughing at?" className="field mt-2 resize-none text-sm disabled:opacity-60"/><div className="mt-1 text-right font-mono text-[8px] text-[#6d675e]">{caption.length}/120</div>
         {error && !useWizard && <p role="alert" className="mt-3 border-l-2 border-[#b54b40] pl-3 text-xs text-[#e08478]">{error}</p>}
         {saving && <div role="status" className="mt-4 border border-white/10 bg-[#211e19] p-3">
+          {savingStage==="processing"&&<div className="developing-roll" aria-hidden="true"><div className="developing-roll__reel"><span/></div><div className="developing-roll__feed"/><div className="developing-roll__tank"><div className="developing-roll__film">{Array.from({length:6},(_,index)=><span key={index}><i/></span>)}</div><div className="developing-roll__bath"/></div></div>}
           <div className="flex items-center justify-between gap-3"><span className="text-xs text-[#ded8cd]">{savingStage==="uploading"?(configured&&user?"Uploading frames to the shared roll…":"Saving your frames…"):`Preparing frame ${Math.max(1,progress)} of ${files.length}…`}</span><span className="font-mono text-[9px] text-[#8c8377]">{savingStage==="uploading"?"SAVING":`${progressPercent}%`}</span></div>
           <div role="progressbar" aria-label={savingStage==="uploading"?"Saving photos":"Preparing photos"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={savingStage==="uploading"?undefined:progressPercent} className={`upload-progress mt-3 h-1 ${savingStage==="uploading"?"upload-progress--indeterminate":""}`}><div className="upload-progress__bar" style={savingStage==="uploading"?undefined:{width:`${progressPercent}%`}}/></div>
         </div>}
         <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 mt-4 border-t border-white/10 bg-[#1a1815]/95 px-4 pb-2 pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 capture-wizard__legacy-submit">
-          <button type="submit" disabled={!files.length||saving||falStatus==="checking"} className="button-primary min-h-12 w-full disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/10 disabled:text-[#777168] disabled:opacity-50">{saving?"Working on your photos…":falStatus==="checking"?"Checking fal.ai setup…":<><Check size={14}/> {files.length?`Add ${files.length} ${files.length===1?"photo":"photos"} to the roll`:"Choose photos to add"} <span className="ml-auto font-mono text-[9px] text-white/70">{roll.photos.length+files.length} / {roll.photoLimit}</span></>}</button>
+          <button type="submit" disabled={!files.length||saving} className="button-primary min-h-12 w-full disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/10 disabled:text-[#777168] disabled:opacity-50">{saving?"Working on your photos…":<><Check size={14}/> {files.length?`Add ${files.length} ${files.length===1?"photo":"photos"} to the roll`:"Choose photos to add"} <span className="ml-auto font-mono text-[9px] text-white/70">{roll.photos.length+files.length} / {roll.photoLimit}</span></>}</button>
         </div>
-        <p className="mt-3 text-center font-mono text-[8px] leading-4 text-[#716b61]">{falStatus==="connected"?"Y2K EDITED WITH FAL.AI FLUX.2 Flash · AMBER SEVEN-SEGMENT DATE IMPRINT":"BASIC CAMERA LOOK · SAVED ON THIS DEVICE ONLY"}</p>
         </section>
         {useWizard&&<div className="capture-wizard__footer">
           {error&&<p role="alert" className="capture-wizard__error">{error}</p>}
           <div>
             {captureStep>0&&<button type="button" onClick={()=>{setError("");setCaptureStep((step)=>step-1);}} className="button-secondary">Back</button>}
-            {captureStep<2||!captionStepReady?<button type="button" disabled={captureStep===0&&!files.length||captureStep===2&&!captionStepReady} onClick={()=>{setError("");setCaptureStep((step)=>Math.min(2,step+1));}} className="button-primary">{captureStep===2?"Opening your note…":<>Continue <ArrowRight size={15}/></>}</button>:<button type="submit" disabled={!files.length||saving||falStatus==="checking"} className="button-primary">{saving?"Working on your photos…":falStatus==="checking"?"Checking setup…":<>Add {files.length} {files.length===1?"photo":"photos"}<Check size={15}/></>}</button>}
+            {captureStep<2||!captionStepReady?<button type="button" disabled={captureStep===0&&!files.length||captureStep===2&&!captionStepReady} onClick={()=>{setError("");setCaptureStep((step)=>Math.min(2,step+1));}} className="button-primary">{captureStep===2?"Opening your note…":<>Continue <ArrowRight size={15}/></>}</button>:<button type="submit" disabled={!files.length||saving} className="button-primary">{saving?"Working on your photos…":<>Add {files.length} {files.length===1?"photo":"photos"}<Check size={15}/></>}</button>}
           </div>
         </div>}
       </form>
     </div>
-  </div></main>;
+  </div></main>
+  {cameraOpen&&typeof document!=="undefined"&&createPortal(<div className="camera-modal" role="dialog" aria-modal="true" aria-label="Afterhours camera">
+    <header className="camera-modal__header">
+      <button type="button" className="camera-modal__quiet-button" onClick={stopCamera}><X size={17}/> Close</button>
+      <span className="camera-modal__wordmark">AFTERHOURS CAMERA</span>
+      <button type="button" className="camera-modal__quiet-button camera-modal__switch" disabled={cameraBusy} onClick={()=>void startCamera(cameraFacing==="environment"?"user":"environment")} aria-label="Switch camera"><RefreshCw size={18}/></button>
+    </header>
+    <div className="camera-modal__stage">
+      {cameraStream&&<video ref={cameraVideoRef} className={`camera-modal__video${cameraFacing==="user"?" camera-modal__video--front":""}`} autoPlay playsInline muted onCanPlay={()=>setCameraReady(true)} aria-label="Live camera preview"/>}
+      {cameraBusy&&!cameraStream&&<p className="camera-modal__status" role="status">Opening camera…</p>}
+      {cameraError&&<div className="camera-modal__error" role="alert"><p>{cameraError}</p><div><button type="button" onClick={()=>void startCamera(cameraFacing)}>Try again</button><button type="button" onClick={()=>{stopCamera();photoInputRef.current?.click();}}>Choose photos</button></div></div>}
+      {!cameraStream&&!cameraBusy&&!cameraError&&<p className="camera-modal__status" role="status">Camera is off.</p>}
+      {previews.length>0&&<div className="camera-modal__thumbnails" aria-label={`${files.length} selected photo previews`}>{previews.slice(-5).map((src,index)=><img key={src} src={src} alt={`Selected frame ${Math.max(1,files.length-Math.min(previews.length,5)+1)+index}`} />)}</div>}
+    </div>
+    <footer className="camera-modal__controls">
+      <div className="camera-modal__count"><strong>{files.length}</strong><span>{files.length===1?"FRAME":"FRAMES"}</span></div>
+      <button type="button" className="camera-modal__shutter" disabled={!cameraReady||cameraBusy||files.length+roll.photos.length>=roll.photoLimit} onClick={()=>void captureCameraFrame()} aria-label="Take photo"><span/></button>
+      <button type="button" className="camera-modal__done" onClick={stopCamera}><Check size={15}/> Done</button>
+    </footer>
+  </div>,document.body)}
+  </>;
 }

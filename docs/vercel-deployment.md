@@ -1,6 +1,6 @@
 # Deploy Afterhours to Vercel
 
-Afterhours is a Next.js app. Vercel detects the framework and supplies the build settings automatically.
+Afterhours is a Next.js 16 app. Vercel detects the framework and supplies the build settings automatically. Keep the project root at the repository root and use the detected Next.js preset, install command, build command, and output directory. Vercel currently defaults new projects to Node.js 24; see [Vercel's supported Node.js versions](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions).
 
 ## Before deploying
 
@@ -15,13 +15,14 @@ Afterhours is a Next.js app. Vercel detects the framework and supplies the build
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key (or legacy anon key) from Supabase **Project Settings → API** | Accounts and shared rolls |
 | `SUPABASE_SERVICE_ROLE_KEY` | Secret service-role key from Supabase **Project Settings → API** | Secure invitation joins and photo expiration cleanup |
 | `CRON_SECRET` | Long random secret that you generate | Authorizes the scheduled expiration route |
-| `FAL_KEY` | Secret key from [fal.ai dashboard → Keys](https://fal.ai/dashboard/keys) | FLUX photo editing; optional for the rest of the site |
 
 Afterhours Awards starts in sample mode and does not send photos to an AI provider. If you later complete the Cloudflare account, model license, privacy, and age checks described in [Afterhours Awards setup](afterhours-awards.md), add its server-only variables to Vercel. Keep `AWARDS_MOCK_MODE=true`, `AWARDS_LIVE_PROCESSING_ENABLED=false`, and `AWARDS_PROVIDER_REQUIREMENTS_CONFIRMED=false` until those checks are complete.
 
-Only the Supabase URL and publishable/anon key use the `NEXT_PUBLIC_` prefix. Keep `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, and `FAL_KEY` server-side; never add a `NEXT_PUBLIC_` prefix to them. The service-role key bypasses RLS and is used only by server routes.
+Only the Supabase URL and publishable/anon key use the `NEXT_PUBLIC_` prefix. Keep `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` server-side; never add a `NEXT_PUBLIC_` prefix to them. The service-role key bypasses RLS and is used only by server routes.
 
 5. Click **Deploy**. Vercel builds and assigns a URL such as `https://afterhours-example.vercel.app`.
+
+The repository includes `package-lock.json`; Vercel will use the matching npm lockfile for dependency installation. The deployment build runs `npm run build` (`next build`).
 
 ## Configure Afterhours Awards
 
@@ -49,7 +50,7 @@ The app needs a configured Supabase project for real user accounts, shared rolls
 4. Add `https://afterhours-example.vercel.app/auth/callback` to **Redirect URLs** and save. Add your custom-domain callback there too after attaching a domain.
 5. Open **Authentication → Sign In / Providers** and enable **Anonymous Sign-Ins** for guests. Keep Email enabled for hosts. Configure CAPTCHA under **Bot and Abuse Protection** if you enable it for anonymous sign-ins.
 
-The checked-in `vercel.json` runs `/api/cron/expire-rolls` daily at 08:15 UTC on production deployments. Generate a random `CRON_SECRET` with at least 16 characters and configure it in the Production environment; Vercel sends it to the route as a bearer token. The route removes expired roll files from Storage before deleting roll records. Hosts can renew from the gallery during the 7-day grace period. After changing environment variables, redeploy so the server functions receive them.
+The checked-in `vercel.json` runs `/api/cron/expire-rolls` once daily at 08:15 UTC on production deployments. Hobby runs daily cron jobs within the scheduled hour; Pro and Enterprise provide per-minute precision. See [Vercel Cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing). Generate a random `CRON_SECRET` with at least 16 characters and configure it in the Production environment; Vercel sends it to the route as a bearer token. The route removes expired roll files from Storage before deleting roll records. Hosts can renew from the gallery during the 7-day grace period. After changing environment variables, redeploy so the server functions receive them.
 
 Guests receive an in-app expiry notice. This project has no email provider or email reminder job configured.
 
@@ -69,6 +70,6 @@ Attach a custom domain in Vercel under **Settings → Domains**. Then update the
 
 After changing Vercel environment variables, redeploy so the new values are included. `NEXT_PUBLIC_` values are embedded during the build. When deploying from Git, pushes to the configured production branch create production deployments; other branches create preview deployments.
 
-## Photo-editing limits
+## Photo processing
 
-The `/api/flux/edit` function runs on Vercel with a 60-second maximum duration. Its returned image is capped at 3 MiB so the base64 JSON response stays below Vercel's 4.5 MB function payload limit. Very large fal.ai results are rejected with an error instead of failing as an oversized Vercel function response.
+Camera looks run locally in the browser with Canvas 2D, so photo editing does not need a Vercel function or a third-party image provider. Shared roll uploads store the processed JPEG and gallery thumbnail in Supabase Storage; demo mode stores compact photo data in that browser.

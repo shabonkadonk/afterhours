@@ -19,20 +19,22 @@ export function SiteHeader() {
   if (isInstalled) return null;
   return (
     <>
-    <header className="relative z-20 border-b border-white/10 bg-[#141311]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
-      <div className="mx-auto flex h-[66px] max-w-[1440px] items-center justify-between px-5 sm:h-[72px] sm:px-10 lg:px-16">
+    <header className="site-header relative z-20 border-b border-white/10 bg-[#141311]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
+        <div className="site-header__inner mx-auto flex h-[66px] max-w-[1440px] items-center justify-between px-5 sm:h-[72px] sm:px-10 lg:px-16">
         <Link href="/" className="group flex items-center gap-2.5" aria-label="Afterhours home">
           <span className="flex h-8 w-8 items-center justify-center border border-[#a33a32] text-[#c55448]"><Disc3 size={17} strokeWidth={1.4}/></span>
           <span className="text-[12px] font-semibold tracking-[.2em]">AFTERHOURS</span>
         </Link>
-        <div className="flex items-center gap-3">
-          <nav aria-label="Primary navigation" className="hidden items-center gap-8 sm:flex">
-            <Link href="/dashboard" aria-current={onRolls ? "page" : undefined} className={`text-xs transition ${onRolls ? "text-[#eee9de]" : "text-[#898378] hover:text-[#eee9de]"}`}>Your rolls</Link>
+        <div className="site-header__desktop-note" aria-hidden="true"><span>SHARED PHOTO ROLLS</span><span>NO FEED. JUST FRAMES.</span></div>
+        <div className="site-header__links flex items-center gap-3">
+          <nav aria-label="Primary navigation" className="site-header__nav hidden items-center gap-8 sm:flex">
+            <Link href="/dashboard" aria-current={onRolls ? "page" : undefined} className={`site-header__nav-link flex items-center gap-2 text-xs transition ${onRolls ? "text-[#eee9de]" : "text-[#898378] hover:text-[#eee9de]"}`}><Disc3 size={15}/>Your rolls</Link>
             {isHome ? <Link href="/rolls/new" className="button-primary min-h-9 px-3 text-xs sm:min-h-10 sm:px-4">Create a roll <ArrowUpRight size={13}/></Link> : <Link href="/rolls/new" aria-current={onCreate ? "page" : undefined} className="flex items-center gap-2 text-xs text-[#d5cfc3] transition hover:text-white"><Camera size={14} className="text-[#b54b40]"/>New roll</Link>}
             {configured && <Link href={accountHref} className="flex min-h-9 items-center gap-1.5 text-xs text-[#aaa396] transition hover:text-white"><UserRound size={15}/>{accountLabel}</Link>}
           </nav>
           {configured && <Link href={accountHref} aria-label={accountLabel} className="flex h-12 w-12 shrink-0 items-center justify-center text-[#eee9de] transition hover:text-white sm:hidden"><UserRound size={19}/></Link>}
         </div>
+        <div className="site-header__rail-footer" aria-hidden="true"><span>AFTERHOURS FIELD NOTES</span><p>Made for the moments<br/>between the photos.</p><i>EST. AFTER DARK</i></div>
       </div>
     </header>
     <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#141311]/95 px-3 pt-2 backdrop-blur-md sm:hidden" style={{ paddingBottom: "max(.5rem, env(safe-area-inset-bottom))" }}>

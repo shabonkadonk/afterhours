@@ -11,8 +11,8 @@ const moments = [
 
 function BrowserHome() {
   return (
-    <main className="overflow-hidden pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
-      <section className="relative mx-auto max-w-[1440px] px-4 pb-8 pt-6 sm:px-10 sm:pb-16 sm:pt-9 lg:px-16 lg:pb-20 lg:pt-14">
+    <main className="browser-home overflow-hidden pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <section className="browser-home__hero relative mx-auto max-w-[1440px] px-4 pb-8 pt-6 sm:px-10 sm:pb-16 sm:pt-9 lg:px-16 lg:pb-20 lg:pt-14">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_75%_43%,rgba(117,44,37,.17),transparent_41%)]" />
         <div className="grid items-center gap-8 lg:min-h-[74svh] lg:gap-10 lg:grid-cols-[1.05fr_.95fr]">
           <div className="relative z-10 max-w-[700px]">
@@ -30,7 +30,7 @@ function BrowserHome() {
             </InstallGuideLink>
             <div className="rise-in rise-in--4 mt-6 flex items-center gap-2 text-xs text-[#898378] sm:mt-12"><Disc3 size={15} className="text-[#b54b40]"/>One private roll, shared with your crew.</div>
           </div>
-          <div className="relative mx-auto grid w-full max-w-[520px] grid-cols-[1fr_.74fr] items-center gap-2 sm:gap-5 lg:ml-auto">
+          <div className="browser-home__prints relative mx-auto grid w-full max-w-[520px] grid-cols-[1fr_.74fr] items-center gap-2 sm:gap-5 lg:ml-auto">
             <div className="home-print rise-in rise-in--2 relative mt-7 rotate-[-3deg] border border-white/10 bg-[#211e19] p-1.5 pb-8 shadow-2xl sm:mt-12 sm:p-3 sm:pb-11">
               <div className="photo-frame aspect-[.82]"><img src={moments[0].src} alt={moments[0].alt} loading="eager" fetchPriority="high" decoding="async" sizes="(max-width: 640px) 52vw, 300px" /></div>
               <span className="absolute bottom-2.5 left-2.5 font-mono text-[7px] tracking-[.11em] text-[#b9b2a6] sm:bottom-4 sm:left-4 sm:text-[9px]">{moments[0].label}</span>

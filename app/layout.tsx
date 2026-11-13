@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Mono, DM_Sans, DM_Serif_Display } from "next/font/google";
+import { DM_Mono, DM_Sans, DM_Serif_Display, Orbitron } from "next/font/google";
 import { AppProvider } from "@/components/app-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { SiteHeader } from "@/components/site-header";
@@ -10,6 +10,7 @@ import "./globals.css";
 const dmSans = DM_Sans({ variable: "--font-ui", subsets: ["latin"] });
 const dmSerif = DM_Serif_Display({ variable: "--font-editorial", weight: "400", subsets: ["latin"] });
 const dmMono = DM_Mono({ variable: "--font-label", weight: "400", subsets: ["latin"] });
+const orbitron = Orbitron({ variable: "--font-clock", weight: "500", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Afterhours — Shared photo rolls",
@@ -41,7 +42,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${dmSans.variable} ${dmSerif.variable} ${dmMono.variable}`}>
+      <body className={`${dmSans.variable} ${dmSerif.variable} ${dmMono.variable} ${orbitron.variable}`}>
         <ScrollMotion />
         <AuthProvider>
           <AppProvider>

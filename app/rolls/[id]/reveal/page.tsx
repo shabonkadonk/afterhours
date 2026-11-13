@@ -97,7 +97,7 @@ export default function RevealPage() {
   const moveViewer=useCallback((step:number)=>setSelected((current)=>{const length=galleryPhotos.length||1;return current===null?0:(current+step+length)%length;}),[galleryPhotos.length]);
   const useMobileReveal=installed===true||smallScreen;
   useEffect(()=>{
-    const media=window.matchMedia("(max-width: 767px), (pointer: coarse)");
+    const media=window.matchMedia("(max-width: 1023px)");
     const update=()=>setSmallScreen(media.matches);
     update();
     media.addEventListener?.("change",update);
@@ -157,7 +157,7 @@ export default function RevealPage() {
     </div>
     {selected!==null&&galleryPhotos.length>0&&<PhotoViewer photos={galleryPhotos} index={selected} rollName={roll.name} close={closeViewer} move={moveViewer}/>}
   </main>;
-  return <main className="mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16"><div className="mx-auto max-w-[1120px]"><LocalDemoNote/>
+  return <main className="reveal-desktop-page mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16"><div className="reveal-desktop-page__inner mx-auto max-w-[1120px]"><LocalDemoNote/>
     <Link href={`/rolls/${roll.id}`} className="mt-8 inline-flex items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]"><ArrowLeft size={13}/> BACK TO SESSION</Link>
     <p className="mt-5 font-display text-2xl leading-tight text-[#ded8cd] sm:text-3xl">{roll.name}</p>
     <div className="reveal-in mt-7 border border-white/10 bg-[#191714] p-5 sm:p-9">
@@ -178,8 +178,8 @@ export default function RevealPage() {
           <div className="flex border border-white/15 p-0.5"><button type="button" onClick={()=>{setSelected(null);setViewMode("timeline");}} aria-pressed={viewMode==="timeline"} className={`min-h-9 px-3 font-mono text-[8px] tracking-[.08em] ${viewMode==="timeline"?"bg-white/10 text-white":"text-[#898378]"}`}>TIMELINE</button><button type="button" onClick={()=>{setSelected(null);setViewMode("contributors");}} aria-pressed={viewMode==="contributors"} className={`min-h-9 px-3 font-mono text-[8px] tracking-[.08em] ${viewMode==="contributors"?"bg-white/10 text-white":"text-[#898378]"}`}>BY CONTRIBUTOR</button></div>
         </div>
       </div>
-      {viewMode==="timeline" ? <div className="mt-5 columns-2 gap-2 sm:columns-2 sm:gap-4 lg:columns-3">{galleryPhotos.map((photo,index)=><PhotoCard key={photo.id} photo={photo} index={photos.indexOf(photo)} rollName={roll.name} onOpen={()=>setSelected(index)}/>)}</div>
-        : <div className="mt-5 space-y-8">{groupedPhotos.map((group)=><section key={group.name} aria-label={`${group.name}'s photos`}><div className="mb-3 flex items-end justify-between border-b border-white/10 pb-2"><h2 className="font-display text-2xl">{group.name}</h2><span className="font-mono text-[9px] tracking-[.1em] text-[#827b70]">{group.photos.length} {group.photos.length===1?"PHOTO":"PHOTOS"}</span></div><div className="columns-2 gap-2 sm:gap-4 lg:columns-3">{group.photos.map((photo)=>{const index=galleryPhotos.indexOf(photo);return <PhotoCard key={photo.id} photo={photo} index={photos.indexOf(photo)} rollName={roll.name} onOpen={()=>setSelected(index)}/>;})}</div></section>)}</div>}
+      {viewMode==="timeline" ? <div className="reveal-desktop-gallery mt-5 columns-2 gap-2 sm:columns-2 sm:gap-4 lg:columns-3">{galleryPhotos.map((photo,index)=><PhotoCard key={photo.id} photo={photo} index={photos.indexOf(photo)} rollName={roll.name} onOpen={()=>setSelected(index)}/>)}</div>
+        : <div className="mt-5 space-y-8">{groupedPhotos.map((group)=><section key={group.name} aria-label={`${group.name}'s photos`}><div className="mb-3 flex items-end justify-between border-b border-white/10 pb-2"><h2 className="font-display text-2xl">{group.name}</h2><span className="font-mono text-[9px] tracking-[.1em] text-[#827b70]">{group.photos.length} {group.photos.length===1?"PHOTO":"PHOTOS"}</span></div><div className="reveal-desktop-gallery columns-2 gap-2 sm:gap-4 lg:columns-3">{group.photos.map((photo)=>{const index=galleryPhotos.indexOf(photo);return <PhotoCard key={photo.id} photo={photo} index={photos.indexOf(photo)} rollName={roll.name} onOpen={()=>setSelected(index)}/>;})}</div></section>)}</div>}
     </> : <div className="mt-7 border border-dashed border-white/15 py-20 text-center"><Camera size={22} className="mx-auto text-[#777168]"/><h2 className="mt-4 font-display text-2xl">The envelope is empty.</h2><p className="mt-2 text-sm text-[#898378]">This roll ended before anyone added a frame.</p><Link href="/dashboard" className="button-secondary mt-6">Back to your rolls</Link></div>}
     <div className="mt-8 flex flex-col justify-between gap-4 border-t border-white/10 pt-5 sm:flex-row sm:items-center"><p className="font-mono text-[9px] tracking-[.09em] text-[#726c62]">A MEMORY MADE OF LITTLE ACCIDENTS.</p><Link href="/dashboard" className="button-secondary w-fit">All your rolls <ArrowUpRight size={14}/></Link></div>
   </div>{selected!==null&&galleryPhotos.length>0&&<PhotoViewer photos={galleryPhotos} index={selected} rollName={roll.name} close={closeViewer} move={moveViewer}/>}</main>;

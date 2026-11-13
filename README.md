@@ -6,46 +6,45 @@ Afterhours is a shared camera roll for nights out. A host creates a roll and inv
 
 - Create rolls with a title, end time, photo limit, and visual theme.
 - Invite contributors with a link, QR code, or join code. Guests can join with an anonymous browser session.
-- Upload photos with captions and camera inspired edits.
+- Upload photos with captions and local Canvas based camera looks. Y2K recreates warm direct flash, cool room shadows, CCD noise, and subtle color fringing; Disposable adds seeded film grain, occasional light leaks, subtle halation and vignetting, and an optional capture-date stamp.
 - Keep photos private in Supabase Storage until the roll is revealed.
 - Browse revealed galleries by contributor or timeline, filter contributors, download individual photos, or export the full roll.
 - Retain cloud rolls for 30 days after reveal, with a 7 day renewal window for the host before scheduled deletion.
 - Try demo mode without a backend. Demo rolls are stored only in the current browser and are not shared.
 - Preview Afterhours Awards on revealed rolls. Sample mode is enabled by default; live processing remains disabled until provider, privacy, license, and age requirements have been confirmed.
-- Install the site on iPhone or Android as a Progressive Web App, with app-style navigation and a simple offline screen.
+- Install the site on iPhone or Android as a Progressive Web App, with app-style navigation and a simple offline screen. PWA name, theme, icons, and shortcuts are defined in [`app/manifest.json`](app/manifest.json).
 - Keep the app portrait-oriented where the installed browser supports orientation locking. Some iPhone versions may still allow rotation; the app shows a portrait prompt in landscape.
 
 ## Technology
 
-- Next.js 15 App Router and React 19
+- Next.js 16 App Router and React 19
 - Supabase Auth, Postgres, and private Storage
 - Tailwind CSS 4
-- fal.ai and other configured image providers for photo editing
+- Browser Canvas 2D image processing for camera looks
 
 ## Run locally
 
 ### Requirements
 
-- Node.js 20 or later
+- Node.js 24.x (Vercel's current default)
 - npm
 
 Install dependencies:
 
 ```bash
-npm install
+npm ci
 ```
 
 Copy `.env.example` to `.env.local`, then fill in the values for the services you want to use. The app can run in demo mode without Supabase credentials.
 
 ```dotenv
-FAL_KEY=your_fal_api_key
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_publishable_or_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_server_only_secret_key
 CRON_SECRET=your_generated_random_secret
 ```
 
-`FAL_KEY` enables photo editing; create one in the [fal.ai dashboard](https://fal.ai/dashboard/keys). Supabase is needed for accounts, guest sessions, shared rolls, and cloud photo storage. The Supabase secret key is used only by server routes for invitation lookups and expiry cleanup. `CRON_SECRET` authorizes the scheduled cleanup endpoint.
+Photo looks are processed locally in the browser; no image-editing API key is needed. Supabase is needed for accounts, guest sessions, shared rolls, and cloud photo storage. The Supabase secret key is used only by server routes for invitation lookups and expiry cleanup. `CRON_SECRET` authorizes the scheduled cleanup endpoint.
 
 Keep `.env.local` private. Never put a Supabase secret key in a `NEXT_PUBLIC_` variable or commit real credentials. Generate a cron secret locally with PowerShell:
 
@@ -116,18 +115,24 @@ npm test           # Run the test suite
 
 ## Deploy to Vercel
 
-Import the repository into Vercel and configure the needed environment variables under **Project → Settings → Environment Variables**:
+1. Push the repository to GitHub, GitLab, or Bitbucket, then import it as a new Vercel project. Keep the project root at the repository root and use Vercel's detected Next.js settings. The project expects Node.js 24.x.
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server only)
-- `CRON_SECRET`
-- `FAL_KEY` if photo editing is needed
-- Any optional Awards variables listed in `.env.example`
+2. Add these environment variables in the Vercel project settings. Set them for each environment you plan to use (Production, Preview, and Development):
 
-The included [`vercel.json`](vercel.json) schedules `/api/cron/expire-rolls` daily. Set `CRON_SECRET` in Vercel so the scheduled route can authenticate, then redeploy after changing environment variables. Follow [`docs/vercel-deployment.md`](docs/vercel-deployment.md) and [`docs/supabase-setup.md`](docs/supabase-setup.md) for deployment details.
+   - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL.
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase publishable key (or legacy anon key).
+   - `SUPABASE_SERVICE_ROLE_KEY` — server-only Supabase service-role key. Never add a `NEXT_PUBLIC_` prefix.
+   - `CRON_SECRET` — a unique, randomly generated secret for the scheduled cleanup endpoint.
 
-Expiry reminders are shown to the host in the app; email reminders are not configured. Live database behavior and scheduled cleanup require a correctly configured Supabase project and Vercel deployment.
+   Awards runs in sample mode by default and needs no provider credentials. Only add the optional Cloudflare and Awards variables from [`.env.example`](.env.example) if you are intentionally configuring live Awards processing; follow the checks in [`docs/afterhours-awards.md`](docs/afterhours-awards.md).
+
+3. In Supabase, run every migration in `supabase/migrations` in filename order. Set the Supabase Site URL to your production origin and add its `/auth/callback` URL to the allowed redirect URLs. Enable Anonymous Sign-Ins if guests should contribute without accounts. See [`docs/supabase-setup.md`](docs/supabase-setup.md).
+
+4. Deploy the project. After changing environment variables, redeploy so the build and server routes receive the new values. Open the deployed site and verify sign-in, roll creation, guest joining, and photo uploads.
+
+The included [`vercel.json`](vercel.json) schedules `/api/cron/expire-rolls` daily at 08:15 UTC on production deployments. The endpoint needs `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` to remove expired photos and rolls. Hosts receive in-app expiry reminders; email reminders are not configured. See [`docs/vercel-deployment.md`](docs/vercel-deployment.md) for the full deployment, cron, domain, and sign-in setup.
+
+Photo looks run in the browser with Canvas 2D, so they do not require an image-processing API key or Vercel function.
 
 ## Revealed rolls and downloads
 

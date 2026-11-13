@@ -1,0 +1,113 @@
+<div id="afterhours-countdown-fonts">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Orbitron:wght@500;600&family=Share+Tech+Mono&display=swap');
+    #afterhours-countdown-fonts {
+      --ah-bg: light-dark(#f4f0e8, #151412);
+      --ah-card: light-dark(#fffaf0, #211f1b);
+      --ah-ink: light-dark(#28231d, #f2e9da);
+      --ah-muted: light-dark(#746b60, #aaa094);
+      --ah-amber: light-dark(#a95d17, #ffc05a);
+      --ah-pink: light-dark(#b63c69, #ff6b8b);
+      --ah-rule: light-dark(#d8cdbb, #494238);
+      color: var(--ah-ink);
+      font-family: system-ui, sans-serif;
+      width: 100%;
+    }
+    #afterhours-countdown-fonts .font-options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    #afterhours-countdown-fonts .font-option {
+      min-width: 0;
+      padding: 20px 18px 19px;
+      border: 1px solid var(--ah-rule);
+      border-radius: 12px;
+      background: var(--ah-card);
+      overflow: hidden;
+    }
+    #afterhours-countdown-fonts .option-name {
+      margin: 0 0 20px;
+      color: var(--ah-muted);
+      font: 500 11px/1.2 system-ui, sans-serif;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    #afterhours-countdown-fonts .opens-label {
+      margin: 0 0 7px;
+      color: var(--ah-ink);
+      font-size: 14px;
+      line-height: 1.25;
+    }
+    #afterhours-countdown-fonts .opens-date {
+      margin: 0 0 18px;
+      color: var(--ah-amber);
+      font-size: 18px;
+      line-height: 1.2;
+    }
+    #afterhours-countdown-fonts .timer {
+      padding-top: 14px;
+      border-top: 1px solid var(--ah-rule);
+      color: var(--ah-pink);
+      font-size: clamp(23px, 3.3vw, 34px);
+      line-height: 1;
+      white-space: nowrap;
+      text-shadow: 0 0 15px color-mix(in srgb, var(--ah-pink) 45%, transparent);
+    }
+    #afterhours-countdown-fonts .lcd .opens-label,
+    #afterhours-countdown-fonts .lcd .opens-date,
+    #afterhours-countdown-fonts .lcd .timer {
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      letter-spacing: .06em;
+    }
+    #afterhours-countdown-fonts .lcd .opens-label { text-transform: uppercase; }
+    #afterhours-countdown-fonts .segment .opens-label,
+    #afterhours-countdown-fonts .segment .opens-date {
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    #afterhours-countdown-fonts .segment .timer {
+      font-family: 'Orbitron', 'Arial', sans-serif;
+      font-weight: 500;
+      letter-spacing: .03em;
+    }
+    #afterhours-countdown-fonts .condensed .opens-label,
+    #afterhours-countdown-fonts .condensed .opens-date,
+    #afterhours-countdown-fonts .condensed .timer {
+      font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+      font-weight: 600;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+    #afterhours-countdown-fonts .condensed .opens-label { font-size: 17px; }
+    #afterhours-countdown-fonts .condensed .opens-date { font-size: 22px; }
+    #afterhours-countdown-fonts .condensed .timer { font-size: clamp(30px, 4vw, 42px); }
+    @media (max-width: 660px) {
+      #afterhours-countdown-fonts .font-options { grid-template-columns: 1fr; }
+      #afterhours-countdown-fonts .font-option { padding: 17px 16px; }
+      #afterhours-countdown-fonts .option-name { margin-bottom: 13px; }
+      #afterhours-countdown-fonts .timer { font-size: 30px; }
+    }
+  </style>
+  <div class="font-options" aria-label="Countdown font options">
+    <section class="font-option lcd" aria-label="Retro camera LCD style">
+      <p class="option-name">Retro camera LCD</p>
+      <p class="opens-label">The night opens in</p>
+      <p class="opens-date">NOV 14</p>
+      <div class="timer" aria-label="2 hours, 14 minutes, 8 seconds">02:14:08</div>
+    </section>
+    <section class="font-option segment" aria-label="Digital clock style">
+      <p class="option-name">Digital clock</p>
+      <p class="opens-label">The night opens in</p>
+      <p class="opens-date">NOV 14</p>
+      <div class="timer" aria-label="2 hours, 14 minutes, 8 seconds">02:14:08</div>
+    </section>
+    <section class="font-option condensed" aria-label="Condensed techno style">
+      <p class="option-name">Condensed techno</p>
+      <p class="opens-label">The night opens in</p>
+      <p class="opens-date">NOV 14</p>
+      <div class="timer" aria-label="2 hours, 14 minutes, 8 seconds">02:14:08</div>
+    </section>
+  </div>
+</div>
