@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, LogOut } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { NotificationSettings } from "@/components/notification-settings";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -22,5 +23,6 @@ export default function AccountPage() {
       {error && <p role="alert" className="mt-5 text-xs text-[#e08478]">{error}</p>}
       {user ? <button onClick={handleSignOut} className="button-secondary mt-6 min-h-11"><LogOut size={14}/> Sign out</button> : <Link href="/login" className="button-primary mt-6 min-h-11">Sign in <LogOut size={14}/></Link>}
     </section>
+    {user && !user.is_anonymous && <NotificationSettings/>}
   </div></main>;
 }

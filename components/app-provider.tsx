@@ -135,7 +135,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
 
   const revealRoll = useCallback(async (rollId: string) => {
     if (cloudMode && supabase) {
-      await closeCloudRoll(supabase, rollId);
+      await closeCloudRoll(rollId);
       await refreshCloudRolls();
       return;
     }

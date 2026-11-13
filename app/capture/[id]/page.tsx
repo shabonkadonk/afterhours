@@ -13,6 +13,7 @@ import { createPhotoId } from "@/lib/supabase/rolls";
 import { useInstalledApp } from "@/components/use-installed-app";
 
 type FilterPreset = { id: PhotoFilterId; label: string; description: string; swatch: string };
+type OrientationControls = ScreenOrientation & { lock?: (orientation: "portrait-primary") => Promise<void> };
 
 const FILTERS: FilterPreset[] = [
   { id: "original", label: "Original", description: "as it was", swatch: "linear-gradient(135deg,#81796b,#39352e 58%,#b4a48b)" },
@@ -78,6 +79,17 @@ export default function CapturePage() {
     void video.play().catch(()=>setCameraError("The camera preview could not start. Try again or choose photos instead."));
     return ()=>{video.pause();video.srcObject=null;};
   },[cameraOpen,cameraStream]);
+  useEffect(()=>{
+    if(!cameraOpen||installed!==true) return;
+    const root=document.documentElement;
+    const orientation=screen.orientation as OrientationControls | undefined;
+    root.classList.add("is-native-camera-open");
+    try { orientation?.unlock?.(); } catch { /* Rotation remains user-controlled when unsupported. */ }
+    return ()=>{
+      root.classList.remove("is-native-camera-open");
+      try { void orientation?.lock?.("portrait-primary").catch(()=>undefined); } catch { /* Orientation locks are optional. */ }
+    };
+  },[cameraOpen,installed]);
   useEffect(()=>{
     if(!useWizard||captureStep!==2){setCaptionStepReady(false);return;}
     const timeout=window.setTimeout(()=>setCaptionStepReady(true),250);
@@ -154,7 +166,7 @@ export default function CapturePage() {
   }
 
   async function startCamera(facing: "environment" | "user" = cameraFacing) {
-    if(saving) return;
+    if(saving||installed!==true) return;
     const requestId=++cameraRequestRef.current;
     setCameraOpen(true);
     setCameraError("");
@@ -302,7 +314,7 @@ export default function CapturePage() {
           {files.length ? <><img src={previews[selectedIndex]} alt={`Original preview of ${files[selectedIndex]?.name ?? "your selected photo"}`} className="absolute inset-0 h-full w-full bg-black/30" style={{objectFit:"contain"}}/><div className="absolute inset-x-0 bottom-0 z-[1] flex items-end justify-between bg-gradient-to-t from-black/85 to-transparent px-4 pb-4 pt-12"><div><span className="font-mono text-[9px] tracking-[.12em] text-white/80">ORIGINAL · FRAME {String(selectedIndex+1).padStart(2,"0")}</span><p className="mt-1 max-w-[220px] truncate text-xs text-white/70">{files[selectedIndex]?.name}</p></div><span className="font-mono text-[9px] text-white/75">{files.length} SELECTED</span></div></> : <div className="px-5 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center border border-white/15 text-[#b44f44]"><ImagePlus size={20}/></div><p className="mt-4 font-display text-xl">Choose a few frames.</p><p className="mt-1 text-xs text-[#7f786e]">Select multiple photos at once, up to {roll.photoLimit-roll.photos.length} remaining.</p></div>}
         </div>
         {files.length>0&&<div className={`mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6${useWizard?" capture-wizard__thumbs":""}`}>{files.map((item,index)=><div key={`${item.name}-${item.lastModified}-${index}`} style={{animationDelay:`${Math.min(index*45,270)}ms`}} className={`photo-tile relative aspect-square border ${index===selectedIndex?"border-[#c55448]":"border-white/10"}`}><button type="button" disabled={saving} onClick={()=>setSelectedIndex(index)} aria-label={`Preview photo ${index+1}: ${item.name}`} className="photo-frame h-full w-full disabled:cursor-wait"><img src={previews[index]} alt="" style={{objectFit:"cover"}}/><span className="absolute bottom-1 left-1 z-[2] bg-black/65 px-1.5 py-0.5 font-mono text-[8px] text-white">{String(index+1).padStart(2,"0")}</span></button><button type="button" disabled={saving} onClick={()=>removeFile(index)} aria-label={`Remove photo ${index+1}`} className="absolute -right-1.5 -top-1.5 z-[3] flex h-7 w-7 items-center justify-center border border-white/25 bg-[#171613] text-[#c9c1b4] hover:text-white disabled:opacity-50"><X size={11}/></button></div>)}</div>}
-        <div className="capture-upload-actions mt-4 grid grid-cols-2 gap-2"><label className={`button-primary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><Upload size={14}/> Choose photos<input ref={photoInputRef} type="file" accept="image/*" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label><button type="button" disabled={saving} onClick={()=>void startCamera("environment")} className={`capture-camera-action button-secondary relative min-h-12 ${saving?"cursor-wait opacity-60":""}`}><Camera size={14}/> Open camera</button></div>
+        <div className={`capture-upload-actions mt-4 grid ${installed===true?"grid-cols-2":"grid-cols-1"} gap-2`}><label className={`button-primary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><Upload size={14}/> Choose photos<input ref={photoInputRef} type="file" accept="image/*" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label>{installed===true&&<button type="button" disabled={saving} onClick={()=>void startCamera("environment")} className={`capture-camera-action button-secondary relative min-h-12 ${saving?"cursor-wait opacity-60":""}`}><Camera size={14}/> Open camera</button>}</div>
         </section>
         <section className="capture-wizard__step capture-wizard__step--look" data-y2k-selected={filterId==="y2k"} style={useWizard?{display:captureStep===1?"flex":"none",flexDirection:"column"}:undefined}>
         <fieldset disabled={saving} className="capture-wizard__look-fieldset disabled:opacity-70"><legend className="eyebrow">PICK A LOOK</legend><div className="capture-wizard__look-grid" style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gridTemplateRows:filterId==="y2k"?"repeat(2, 78px)":"repeat(2, minmax(0, 1fr))",gridTemplateAreas:'"original y2k flash" "disposable rio mono"'}}>{FILTERS.map((filter)=><button type="button" key={filter.id} data-filter={filter.id} onClick={()=>setFilterId(filter.id)} aria-pressed={filter.id===filterId} style={{gridArea:filter.id}} className={`capture-wizard__look-card choice-card border p-1.5 text-left ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="capture-wizard__look-swatch mb-2 block" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div></fieldset>

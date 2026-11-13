@@ -42,9 +42,7 @@ export async function loadCloudRolls(supabase: SupabaseClient, user: User): Prom
 
   const expired = (initialRolls ?? []).filter((roll) => roll.status === "active" && Date.parse(roll.ends_at) <= Date.now());
   if (expired.length) {
-    const closeResults = await Promise.all(expired.map((roll) => supabase.rpc("close_roll", { target_roll_id: roll.id })));
-    const closeError = closeResults.find((result) => result.error)?.error;
-    if (closeError) throw backendError(closeError);
+    await Promise.all(expired.map((roll) => closeCloudRoll(roll.id)));
   }
   const { data: rolls, error: refreshError } = expired.length
     ? await supabase.from("rolls").select("id,owner_id,name,theme,status,created_at,ends_at,photo_limit,photo_count,revealed_at,expires_at").in("id", rollIds).order("created_at", { ascending: false })
@@ -272,9 +270,10 @@ export async function deleteCloudRoll(supabase: SupabaseClient, rollId: string) 
   if (error) throw backendError(error);
 }
 
-export async function closeCloudRoll(supabase: SupabaseClient, rollId: string) {
-  const { error } = await supabase.rpc("close_roll", { target_roll_id: rollId });
-  if (error) throw backendError(error);
+export async function closeCloudRoll(rollId: string) {
+  const response = await fetch(`/api/rolls/${rollId}/reveal`, { method: "POST" });
+  const result = await response.json() as { error?: string };
+  if (!response.ok) throw new Error(result.error ?? "Could not reveal this roll.");
 }
 
 export async function joinCloudRoll(inviteCode: string, displayName: string) {
