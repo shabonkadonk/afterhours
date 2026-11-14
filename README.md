@@ -6,7 +6,7 @@ Afterhours is a shared camera roll for nights out. A host creates a roll and inv
 
 - Create rolls with a title, end time, photo limit, and visual theme.
 - Invite contributors with a link, QR code, or join code. Guests can join with an anonymous browser session.
-- Upload photos with captions and local Canvas based camera looks. Y2K recreates warm direct flash, cool room shadows, CCD noise, and subtle color fringing; Disposable adds seeded film grain, occasional light leaks, subtle halation and vignetting, and an optional capture-date stamp.
+- Capture photos in the installed app with the native camera, including an optional torch/flash control on cameras and browsers that support it. Upload photos with captions and local Canvas based camera looks. Y2K recreates warm direct flash, cool room shadows, CCD noise, and subtle color fringing; Disposable adds seeded film grain, occasional light leaks, subtle halation and vignetting, and an optional capture-date stamp.
 - Keep photos private in Supabase Storage until the roll is revealed.
 - Browse revealed galleries by contributor or timeline, filter contributors, download individual photos, or export the full roll.
 - Opt in to push notifications when someone joins one of your rolls or a roll is revealed.

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, CalendarClock, Camera, Check, ImagePlus, RefreshCw, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Camera, Check, ImagePlus, RefreshCw, Upload, X, Zap } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useApp } from "@/components/app-provider";
@@ -14,6 +14,10 @@ import { useInstalledApp } from "@/components/use-installed-app";
 
 type FilterPreset = { id: PhotoFilterId; label: string; description: string; swatch: string };
 type OrientationControls = ScreenOrientation & { lock?: (orientation: "portrait-primary") => Promise<void> };
+type TorchTrack = MediaStreamTrack & {
+  getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean[] };
+};
+type TorchConstraints = MediaTrackConstraints & { torch?: boolean };
 
 const FILTERS: FilterPreset[] = [
   { id: "original", label: "Original", description: "as it was", swatch: "linear-gradient(135deg,#81796b,#39352e 58%,#b4a48b)" },
@@ -37,6 +41,8 @@ export default function CapturePage() {
   const [cameraError, setCameraError] = useState("");
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraTorchAvailable, setCameraTorchAvailable] = useState(false);
+  const [cameraTorchEnabled, setCameraTorchEnabled] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const previewUrls = useRef<string[]>([]);
@@ -162,6 +168,8 @@ export default function CapturePage() {
     setCameraOpen(false);
     setCameraBusy(false);
     setCameraReady(false);
+    setCameraTorchAvailable(false);
+    setCameraTorchEnabled(false);
     setCameraError("");
   }
 
@@ -171,6 +179,8 @@ export default function CapturePage() {
     setCameraOpen(true);
     setCameraError("");
     setCameraReady(false);
+    setCameraTorchAvailable(false);
+    setCameraTorchEnabled(false);
     setCameraBusy(true);
     cameraStreamRef.current?.getTracks().forEach((track)=>track.stop());
     cameraStreamRef.current=null;
@@ -188,6 +198,16 @@ export default function CapturePage() {
       });
       if(requestId!==cameraRequestRef.current) { stream.getTracks().forEach((track)=>track.stop()); return; }
       cameraStreamRef.current=stream;
+      const videoTrack=stream.getVideoTracks()[0] as TorchTrack | undefined;
+      let torchAvailable=false;
+      try {
+        const capabilities=videoTrack?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean[] }) | undefined;
+        const torchValues=capabilities?.torch;
+        torchAvailable=Array.isArray(torchValues)&&torchValues.includes(true)&&torchValues.includes(false);
+      } catch {
+        // Some browsers expose the camera stream but cannot report its torch capabilities.
+      }
+      setCameraTorchAvailable(torchAvailable);
       setCameraStream(stream);
     } catch(caught) {
       if(requestId!==cameraRequestRef.current) return;
@@ -199,6 +219,25 @@ export default function CapturePage() {
           :name==="NotReadableError"
             ?"The camera is being used by another app. Close it and try again."
             :"Couldn’t open the camera. Check camera permission or choose photos instead.");
+    } finally {
+      if(requestId===cameraRequestRef.current) setCameraBusy(false);
+    }
+  }
+
+  async function toggleCameraTorch() {
+    const stream=cameraStreamRef.current;
+    const track=stream?.getVideoTracks()[0];
+    if(!track||!cameraTorchAvailable||cameraBusy) return;
+    const requestId=cameraRequestRef.current;
+    const nextEnabled=!cameraTorchEnabled;
+    setCameraBusy(true);
+    setCameraError("");
+    try {
+      const currentConstraints=track.getConstraints();
+      await track.applyConstraints({...currentConstraints,torch:nextEnabled} as TorchConstraints);
+      if(requestId===cameraRequestRef.current) setCameraTorchEnabled(nextEnabled);
+    } catch {
+      if(requestId===cameraRequestRef.current) setCameraError("The flash couldn’t be changed on this camera. Try switching cameras.");
     } finally {
       if(requestId===cameraRequestRef.current) setCameraBusy(false);
     }
@@ -363,7 +402,10 @@ export default function CapturePage() {
     <header className="camera-modal__header">
       <button type="button" className="camera-modal__quiet-button" onClick={stopCamera}><X size={17}/> Close</button>
       <span className="camera-modal__wordmark">AFTERHOURS CAMERA</span>
-      <button type="button" className="camera-modal__quiet-button camera-modal__switch" disabled={cameraBusy} onClick={()=>void startCamera(cameraFacing==="environment"?"user":"environment")} aria-label="Switch camera"><RefreshCw size={18}/></button>
+      <div className="camera-modal__actions">
+        <button type="button" className="camera-modal__quiet-button camera-modal__flash" disabled={!cameraTorchAvailable||cameraBusy||!cameraStream} onClick={()=>void toggleCameraTorch()} aria-label={!cameraTorchAvailable?"Flash unavailable":cameraTorchEnabled?"Turn flash off":"Turn flash on"} aria-pressed={cameraTorchEnabled} title={!cameraTorchAvailable?"Flash isn’t available on this camera":cameraTorchEnabled?"Turn flash off":"Turn flash on"}><Zap size={18}/></button>
+        <button type="button" className="camera-modal__quiet-button camera-modal__switch" disabled={cameraBusy} onClick={()=>void startCamera(cameraFacing==="environment"?"user":"environment")} aria-label="Switch camera"><RefreshCw size={18}/></button>
+      </div>
     </header>
     <div className="camera-modal__stage">
       {cameraStream&&<video ref={cameraVideoRef} className={`camera-modal__video${cameraFacing==="user"?" camera-modal__video--front":""}`} autoPlay playsInline muted onCanPlay={()=>setCameraReady(true)} aria-label="Live camera preview"/>}
