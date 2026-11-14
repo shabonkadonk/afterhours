@@ -31,12 +31,14 @@ function promptForPhoto(settings: AwardsSettings) {
     "Let the photo choose the joke. An awkward pose, blurry shot, drink, or random background detail could send the reaction somewhere unexpected; don't force one category or repeat a formula. Prefer a believable group-chat reaction over workplace or government comparisons.",
     "Aim for about 6–14 words and under 160 characters. One punchy thought is enough; don't narrate the whole scene, describe faces, guess feelings, or explain the joke.",
     "Use a savage, unfiltered-friend voice: blunt, spontaneous, and wildly disproportionate about harmless party chaos. Keep it one punchy line; never attack someone's identity, body, or worth.",
+    "Do not guess that anyone is drunk, intoxicated, or high, and do not invent relationships or personal details.",
     profanityInstruction,
     "Skip generic social-media captions, formulaic openings, and 'X is giving'. Avoid forced slang and recycled punchlines. Do not pad the joke.",
     "Use visible details only. Do not identify people, infer sensitive traits or relationships, comment on attractiveness or bodies, or attack someone's identity, personal worth, or inherent characteristics.",
     "Stick to what's visible; any wild premise must read as an obvious joke, not a factual claim or backstory.",
     `Choose at most one exact awardTitle from this list: ${categories.join(" | ")}. If no category fits, use NONE for awardTitle.`,
     "Return exactly four labeled lines in plain text, with no markdown or extra commentary:",
+    "Start each line with its exact label. Do not use bullets, JSON, quotation marks, an introduction, or extra lines.",
     "Award Title: one exact title from the list, or NONE",
     "Visual Note: one short, specific detail visible in the frame, under 80 characters",
     "Score: an integer from 1 to 5 for how visually memorable this frame is",
@@ -47,18 +49,40 @@ function promptForPhoto(settings: AwardsSettings) {
 function parsePlainTextCandidate(value: unknown, photoId: string): AwardCandidate | null {
   if (typeof value !== "string") return null;
   const text = value.replace(/```[^\n]*\n?|```/g, "").trim();
-  if (text.length < 12 || text.length > 2_000 || /[{}\[\]]/.test(text)
+  if (text.length < 12 || text.length > 2_000
     || /\b(?:cannot|can't|unable to|could not|couldn't|no image provided)\b/i.test(text)) return null;
 
-  const field = (label: string) => text.match(new RegExp(`(?:^|\\n)\\s*(?:${label})\\s*:\\s*(.+)`, "im"))?.[1]?.trim();
-  const rawTitle = field("Award\\s+Title|Category");
+  const lines = text.split(/\r?\n/).map((line) => line.trim()
+    .replace(/^(?:[-*•>]\s*)+/, "")
+    .replace(/^\d+[.)]\s*/, "")
+    .trim());
+  const cleanField = (field: string) => field.trim()
+    .replace(/^[`\"'“”]+|[`\"'“”]+$/g, "")
+    .replace(/,\s*$/, "")
+    .trim();
+  const field = (label: string) => {
+    const linePattern = new RegExp(`^(?:\\*\\*)?\\s*(?:${label})\\s*(?:\\*\\*)?\\s*(?::|=|[-–—])\\s*(.*?)\\s*$`, "i");
+    for (const line of lines) {
+      const match = line.match(linePattern);
+      if (match?.[1]) return cleanField(match[1]);
+    }
+
+    const jsonFieldPattern = new RegExp(`[\"']?\\s*(?:${label})[\"']?\\s*:\\s*[\"']((?:\\\\.|[^\"'\\\\])*)[\"']`, "i");
+    const match = text.match(jsonFieldPattern);
+    return match?.[1] ? cleanField(match[1].replace(/\\\\([\"'\\\\])/g, "$1")) : undefined;
+  };
+  const rawTitle = field("award\\s*title|category|award");
   const titleText = rawTitle?.replace(/[.。]$/, "").trim();
   const awardTitle = !titleText || /^none$/i.test(titleText)
     ? null
     : categories.find((category) => category.toLowerCase() === titleText.toLowerCase()) ?? null;
-  const visualNote = field("Visual\\s+Note|Note") ?? text;
-  const explanation = field("Explanation|Citation") ?? (awardTitle ? visualNote : null);
-  const scoreValue = Number.parseInt(field("Score") ?? "3", 10);
+  const labeledExplanation = field("explanation|citation|caption|reason");
+  const captionFallback = lines.filter((line) => line.length >= 12
+    && !/^(?:award\\s*title|category|visual\\s*note|note|score|rating)\\s*(?::|=|[-–—])/i.test(line)
+    && !/^(?:here(?:'s| is)|sure[,!:])/i.test(line)).at(-1);
+  const explanation = labeledExplanation ?? (awardTitle ? field("visual\\s*note|note") : undefined) ?? captionFallback;
+  const visualNote = field("visual\\s*note|note") ?? explanation ?? text;
+  const scoreValue = Number.parseInt(field("score|rating") ?? "3", 10);
 
   return parseAwardCandidate({
     visualNote,
@@ -153,6 +177,29 @@ function parseGeneratedOutput(value: unknown, depth = 0): unknown {
   return null;
 }
 
+function findPlainTextOutput(value: unknown, depth = 0): string | null {
+  if (depth > 4) return null;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const output = findPlainTextOutput(item, depth + 1);
+      if (output) return output;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const wrapperKeys = ["response", "result", "output", "data", "content", "text", "answer", "generated_text", "generatedText"];
+  const orderedKeys = [...wrapperKeys.filter((key) => keys.includes(key)), ...keys.filter((key) => !wrapperKeys.includes(key))];
+  for (const key of orderedKeys) {
+    const output = findPlainTextOutput(record[key], depth + 1);
+    if (output) return output;
+  }
+  return null;
+}
+
 export class CloudflareAwardsProvider implements AwardsProvider {
   readonly name = "cloudflare" as const;
   readonly model: string;
@@ -223,9 +270,10 @@ export class CloudflareAwardsProvider implements AwardsProvider {
     if (!generated) throw new AwardsProviderError("invalid_response", "The awards provider returned an invalid response.", "provider_output");
 
     const parsed = parseGeneratedOutput(generated);
-    const candidate = parsed
-      ? parseAwardCandidate(parsed, photo.id)
-      : parsePlainTextCandidate(generated, photo.id);
+    const parsedCandidate = parsed ? parseAwardCandidate(parsed, photo.id) : null;
+    const candidate = parsedCandidate?.visualNote && parsedCandidate.explanation
+      ? parsedCandidate
+      : parsePlainTextCandidate(findPlainTextOutput(generated), photo.id);
     if (!candidate) {
       throw new AwardsProviderError("invalid_response", "The awards provider returned an invalid response.", parsed ? "candidate_validation" : "provider_output");
     }
