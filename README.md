@@ -13,7 +13,7 @@ Afterhours is a shared camera roll for nights out. A host creates a roll and inv
 - Retain cloud rolls for 30 days after reveal, with a 7 day renewal window for the host before scheduled deletion.
 - Try demo mode without a backend. Demo rolls are stored only in the current browser and are not shared.
 - Preview Afterhours Awards on revealed rolls. Sample mode is enabled by default; live processing remains disabled until provider, privacy, license, and age requirements have been confirmed.
-- Install the site on iPhone or Android as a Progressive Web App, with app-style navigation and a simple offline screen. PWA name, theme, icons, and shortcuts are defined in [`app/manifest.json`](app/manifest.json).
+- Install the site on iPhone or Android as a Progressive Web App, with app-style navigation and a simple offline screen. PWA name, theme, icons, and shortcuts are defined in [`public/manifest.webmanifest`](public/manifest.webmanifest).
 - Require mobile visitors to install Afterhours before using app pages; desktop browser access remains available.
 - Keep the app portrait-oriented where the installed browser supports orientation locking. Some iPhone versions may still allow rotation; the app shows a portrait prompt in landscape.
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Camera, House, KeyRound, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
@@ -41,7 +41,6 @@ function AppNavigation() {
 export function InstalledAppShell({ children }: { children: React.ReactNode }) {
   const installed = useInstalledApp();
   const path = usePathname();
-  const router = useRouter();
   const [mobileDevice, setMobileDevice] = useState<boolean | null>(null);
   const [online, setOnline] = useState(true);
 
@@ -49,8 +48,16 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
 
   const needsInstallation = installed === false && mobileDevice === true && path !== "/install";
   useEffect(() => {
-    if (needsInstallation) router.replace("/install");
-  }, [needsInstallation, router]);
+    if (!needsInstallation) return;
+
+    const inviteToken = /^\/join\/([0-9a-f]{64})$/i.exec(path)?.[1]?.toLowerCase();
+    const queryCode = new URLSearchParams(window.location.search).get("code")?.trim().toUpperCase();
+    const inviteCode = queryCode && /^(?:AFTR-[0-9A-F]{8}|[0-9A-F]{10})$/.test(queryCode) ? queryCode : null;
+    const installUrl = new URL("/install", window.location.origin);
+    if (inviteToken) installUrl.searchParams.set("invite", inviteToken);
+    else if (path === "/join" && inviteCode) installUrl.searchParams.set("code", inviteCode);
+    window.location.replace(`${installUrl.pathname}${installUrl.search}`);
+  }, [needsInstallation, path]);
 
   useEffect(() => {
     if (!installed) return;

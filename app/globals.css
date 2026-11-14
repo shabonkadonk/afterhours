@@ -328,6 +328,7 @@ html.motion-ready .scroll-reveal.is-visible { opacity: 1; transform: translateY(
   .camera-modal__controls { position: absolute; z-index: 2; right: 0; left: 0; padding-right: max(16px, env(safe-area-inset-right)); padding-left: max(16px, env(safe-area-inset-left)); }
   .camera-modal__header { top: 0; min-height: calc(52px + env(safe-area-inset-top)); padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 4px; background: linear-gradient(to bottom, rgba(9,9,8,.82), transparent); }
   .camera-modal__controls { bottom: 0; min-height: calc(82px + env(safe-area-inset-bottom)); padding-top: 4px; padding-bottom: max(6px, env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(9,9,8,.86), transparent); }
+  .camera-modal__shutter { position: fixed; z-index: 3; top: 50%; right: max(16px, env(safe-area-inset-right)); transform: translateY(-50%); }
   .camera-modal__thumbnails { bottom: calc(86px + env(safe-area-inset-bottom)); }
 }
 .reveal-mobile { position: fixed; inset: calc(66px + env(safe-area-inset-top)) 0 calc(57px + max(8px, env(safe-area-inset-bottom))); z-index: 10; display: flex; min-height: 0; flex-direction: column; overflow: hidden; background: #141311; }
