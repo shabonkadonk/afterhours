@@ -59,7 +59,7 @@ async function getRequestContext(context: RouteContext) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) return { response: jsonError("Sign in to open Awards for this roll.", 401) } as const;
   const { data: roll, error: rollError } = await supabase
-    .from("rolls").select("id,status,owner_id,awards_profanity,awards_roast_intensity,awards_humor_style").eq("id", id).maybeSingle();
+    .from("rolls").select("id,status,owner_id,awards_profanity").eq("id", id).maybeSingle();
   if (rollError) {
     const errorCode = (rollError as { code?: string }).code ?? "unknown";
     console.error("[awards] roll access lookup failed", { code: errorCode });
@@ -119,8 +119,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
   const { error } = await access.supabase.from("rolls").update({
     awards_profanity: settings.profanity,
-    awards_roast_intensity: settings.roastIntensity,
-    awards_humor_style: settings.humorStyle,
   }).eq("id", access.id);
   if (error) return jsonError("Awards settings couldn’t be saved. Try again.", 503);
   return NextResponse.json({ settings }, { headers: { "Cache-Control": "no-store" } });

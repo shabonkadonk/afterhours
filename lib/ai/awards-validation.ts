@@ -14,13 +14,24 @@ function cleanText(value: string, maxLength: number) {
   return `${readableEnd.trimEnd()}…`;
 }
 
+function cleanCaption(value: string, maxLength = 180) {
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const firstSentence = cleaned.match(/^.*?[.!?](?=\s|$)/)?.[0]?.trim() ?? cleaned;
+  if (firstSentence.length <= maxLength) return firstSentence;
+
+  const clipped = firstSentence.slice(0, maxLength - 1);
+  const lastSpace = clipped.lastIndexOf(" ");
+  const readableEnd = lastSpace > maxLength * 0.65 ? clipped.slice(0, lastSpace) : clipped;
+  return `${readableEnd.trimEnd().replace(/[,;:]$/, "")}.`;
+}
+
 export function parseAwardCandidate(value: unknown, photoId: string): AwardCandidate | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   const title = typeof candidate.awardTitle === "string" && allowedCategories.has(candidate.awardTitle)
     ? candidate.awardTitle as AwardCategory
     : null;
-  const explanation = typeof candidate.explanation === "string" ? cleanText(candidate.explanation, 180) : null;
+  const explanation = typeof candidate.explanation === "string" ? cleanCaption(candidate.explanation) : null;
   const visualNote = typeof candidate.visualNote === "string" ? cleanText(candidate.visualNote, 140) : "";
   if (unsafePersonalClaims.test(`${explanation ?? ""} ${visualNote}`)) return null;
   const score = typeof candidate.score === "number" && Number.isFinite(candidate.score)
@@ -60,7 +71,7 @@ export function validateAwardsResult(value: unknown, allowedPhotoIds: string[]):
     if (nextCount > 2) throw new Error("Invalid awards response.");
     mainPhotoCounts.set(photoId, nextCount);
     if (typeof row.explanation !== "string") throw new Error("Invalid awards response.");
-    const explanation = cleanText(row.explanation, 220);
+    const explanation = cleanCaption(row.explanation);
     if (!explanation) throw new Error("Invalid awards response.");
     let runnerUpPhotoId: string | null = null;
     if (row.runnerUpPhotoId !== null && row.runnerUpPhotoId !== undefined) {

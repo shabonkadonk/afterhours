@@ -161,6 +161,10 @@ test("Cloudflare adapter uses the documented prompt plus single-image REST input
     assert.deepEqual(Object.keys(requestBody), ["prompt", "image", "max_tokens", "temperature"]);
     assert.equal(requestBody.image, "data:image/jpeg;base64,YWJj");
     assert.match(requestBody.prompt, /Return exactly four labeled lines/);
+    assert.equal(requestBody.max_tokens, 180);
+    assert.equal(requestBody.temperature, 0.7);
+    assert.match(requestBody.prompt, /about 6–14 words/i);
+    assert.match(requestBody.prompt, /Make a specific joke from something visible/i);
     assert.equal(candidate.photoId, photoIds[0]);
     assert.equal(candidate.awardTitle, "Funniest Photo");
   } finally {
@@ -171,20 +175,9 @@ test("Cloudflare adapter uses the documented prompt plus single-image REST input
   }
 });
 
-test("Cloudflare prompt reflects every profanity, roast intensity, and humor style combination", async () => {
+test("Cloudflare prompt switches between clean and 18+ group-chat captions", async () => {
   const originalFetch = global.fetch;
   const previous = { account: process.env.CLOUDFLARE_ACCOUNT_ID, token: process.env.CLOUDFLARE_API_TOKEN };
-  const intensities = {
-    mild: "Use playful teasing, light sarcasm, and funny observations.",
-    unhinged: "Use aggressive sarcasm, absurd commentary, backhanded compliments",
-    savage: "Use maximum comedic intensity: be brutally sarcastic",
-  };
-  const styles = {
-    brainrot: "Use ironic internet humor, absurd exaggeration",
-    dry_sarcasm: "Use deadpan delivery, understated insults",
-    fake_hype: "Treat ordinary photographs like historic achievements",
-    unfiltered_friend: "Use spontaneous, unpredictable reactions",
-  };
   try {
     process.env.CLOUDFLARE_ACCOUNT_ID = "account-test";
     process.env.CLOUDFLARE_API_TOKEN = "test-token";
@@ -195,16 +188,15 @@ test("Cloudflare prompt reflects every profanity, roast intensity, and humor sty
     };
 
     for (const profanity of [false, true]) {
-      for (const [roastIntensity, intensityText] of Object.entries(intensities)) {
-        for (const [humorStyle, styleText] of Object.entries(styles)) {
-          const provider = new CloudflareAwardsProvider({ profanity, roastIntensity, humorStyle });
-          await provider.analyzePhoto({ id: photoIds[0], imageDataUrl: "data:image/jpeg;base64,YWJj" });
-          assert.ok(global.lastAwardsPrompt.includes(intensityText));
-          assert.ok(global.lastAwardsPrompt.includes(styleText));
-          assert.match(global.lastAwardsPrompt, profanity
-            ? /Profanity is allowed/ : /Do not use profanity or swear words at all/);
-        }
-      }
+      const provider = new CloudflareAwardsProvider({ profanity });
+      await provider.analyzePhoto({ id: photoIds[0], imageDataUrl: "data:image/jpeg;base64,YWJj" });
+      assert.match(global.lastAwardsPrompt, /Use a savage, unfiltered-friend voice/i);
+      assert.match(global.lastAwardsPrompt, /parties or nights out/i);
+      assert.match(global.lastAwardsPrompt, profanity
+        ? /With 18\+ mode on, sound naturally uncensored/i
+        : /Do not use profanity or swear words at all/i);
+      assert.match(global.lastAwardsPrompt, /Skip generic social-media captions/i);
+      assert.match(global.lastAwardsPrompt, /Don't narrate the whole scene, describe faces, guess feelings/i);
     }
   } finally {
     global.fetch = originalFetch;

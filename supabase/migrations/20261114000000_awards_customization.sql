@@ -43,3 +43,10 @@ begin
   end if;
 end;
 $$;
+
+-- The host-guest migration restricts authenticated access to named roll columns.
+-- Expose these preferences to roll members and allow owners to update only them.
+grant select (awards_profanity, awards_roast_intensity, awards_humor_style)
+  on public.rolls to authenticated;
+grant update (awards_profanity, awards_roast_intensity, awards_humor_style)
+  on public.rolls to authenticated;

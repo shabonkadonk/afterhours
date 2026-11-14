@@ -21,34 +21,26 @@ const categories = [
 ];
 
 function promptForPhoto(settings: AwardsSettings) {
-  const intensityInstructions = {
-    mild: "Use playful teasing, light sarcasm, and funny observations. Keep the roast gentle.",
-    unhinged: "Use aggressive sarcasm, absurd commentary, backhanded compliments, and out-of-pocket group-chat humor.",
-    savage: "Use maximum comedic intensity: be brutally sarcastic and relentlessly roast the photograph. Make ordinary visible details sound like major incidents.",
-  } satisfies Record<AwardsSettings["roastIntensity"], string>;
-  const styleInstructions = {
-    brainrot: "Use ironic internet humor, absurd exaggeration, chaotic group-chat energy, fake confidence, and ridiculous references.",
-    dry_sarcasm: "Use deadpan delivery, understated insults, blunt observations, and sarcastic praise.",
-    fake_hype: "Treat ordinary photographs like historic achievements: fake motivational speeches, exaggerated success stories, and ridiculous levels of confidence.",
-    unfiltered_friend: "Use spontaneous, unpredictable reactions that sound like something a brutally honest friend would actually type in a group chat.",
-  } satisfies Record<AwardsSettings["humorStyle"], string>;
+  const profanityInstruction = !settings.profanity
+    ? "Do not use profanity or swear words at all."
+    : "With 18+ mode on, sound naturally uncensored and lean toward a swear being part of most captions. Let it be the actual reaction: a blunt question or outburst, a natural intensifier, or the start of the thought. Vary the wording; don't write a clean sentence and insert a swear, tack one onto the end, or reuse stock phrases. Aim for the rhythm of 'why the FUCK is the flash on 😭', 'can't hear a damn thing and we're still telling full stories', or 'this shit is so blurry i can hear the bass'—never copy those lines. In emphatic who/what/why/how the fuck phrasing, capitalize FUCK. An occasional 😭 can cap the reaction; don't append emojis mechanically.";
 
   return [
-    "You are reacting to a photograph in a friends' group chat. Make the Explanation funny, specific, and natural; do not sound like a formal reviewer or generic AI.",
-    intensityInstructions[settings.roastIntensity],
-    styleInstructions[settings.humorStyle],
-    settings.profanity
-      ? "Profanity is allowed, including fuck, shit, damn, and hell. Use it naturally only when it improves the joke. In phrases like who the fuck, why the fuck, what the fuck, or how the fuck, capitalize FUCK."
-      : "Do not use profanity or swear words at all. Keep the same humor style and intensity using clean alternatives.",
-    "Analyze only what is visibly established in this photograph. Roast the photograph, composition, background, camera timing, poses, clothing, visible objects, or harmless visual chaos.",
-    "Do not identify people, infer sensitive traits or relationships, comment on attractiveness or bodies, or assign personalities, intentions, or backstories. Never attack someone's identity, personal worth, or inherent characteristics.",
-    "Do not invent events or details. Avoid repetitive jokes, forced slang, generic AI punchlines, and overused templates. Do not explain jokes or add unnecessary commentary. Match the humor to what is actually visible.",
+    "React to the image like a chaotic friend in a group chat. The Explanation should be a roast or joke, not a neutral photo description. Keep it conversational, usually lowercase; occasional ALL CAPS is fine.",
+    "Make a specific joke from something visible. Many photos are from parties or nights out: when the image supports it, riff on the dance floor, bad flash, drinks, bar or bathroom chaos, or the trip home. Don't assume details that aren't visible, and don't force every photo into a party joke.",
+    "Let the photo choose the joke. An awkward pose, blurry shot, drink, or random background detail could send the reaction somewhere unexpected; don't force one category or repeat a formula. Prefer a believable group-chat reaction over workplace or government comparisons.",
+    "Aim for about 6–14 words and under 160 characters. One punchy thought is enough; don't narrate the whole scene, describe faces, guess feelings, or explain the joke.",
+    "Use a savage, unfiltered-friend voice: blunt, spontaneous, and wildly disproportionate about harmless party chaos. Keep it one punchy line; never attack someone's identity, body, or worth.",
+    profanityInstruction,
+    "Skip generic social-media captions, formulaic openings, and 'X is giving'. Avoid forced slang and recycled punchlines. Do not pad the joke.",
+    "Use visible details only. Do not identify people, infer sensitive traits or relationships, comment on attractiveness or bodies, or attack someone's identity, personal worth, or inherent characteristics.",
+    "Stick to what's visible; any wild premise must read as an obvious joke, not a factual claim or backstory.",
     `Choose at most one exact awardTitle from this list: ${categories.join(" | ")}. If no category fits, use NONE for awardTitle.`,
     "Return exactly four labeled lines in plain text, with no markdown or extra commentary:",
     "Award Title: one exact title from the list, or NONE",
-    "Visual Note: one short, specific detail visible in the frame, under 100 characters",
+    "Visual Note: one short, specific detail visible in the frame, under 80 characters",
     "Score: an integer from 1 to 5 for how visually memorable this frame is",
-    "Explanation: one funny line grounded in a visible detail, under 160 characters",
+    "Explanation: one funny, specific group-chat reaction, under 160 characters",
   ].join(" ");
 }
 
@@ -194,8 +186,8 @@ export class CloudflareAwardsProvider implements AwardsProvider {
         body: JSON.stringify({
           prompt: promptForPhoto(this.settings),
           image: photo.imageDataUrl,
-          max_tokens: 220,
-          temperature: 0.25,
+          max_tokens: 180,
+          temperature: 0.7,
         }),
         signal: AbortSignal.timeout(20_000),
         cache: "no-store",

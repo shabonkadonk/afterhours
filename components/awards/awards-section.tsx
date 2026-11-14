@@ -3,7 +3,7 @@
 import { ArrowLeft, ArrowRight, Crown, LoaderCircle, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Award, AwardsResult } from "@/lib/ai/awards-types";
-import { DEFAULT_AWARDS_SETTINGS, HUMOR_STYLES, ROAST_INTENSITIES, type AwardsSettings, type HumorStyle, type RoastIntensity } from "@/lib/ai/awards-settings";
+import { DEFAULT_AWARDS_SETTINGS, type AwardsSettings } from "@/lib/ai/awards-settings";
 import { PhotoImage } from "@/components/photo-image";
 import type { Photo } from "@/lib/types";
 import { formatDate } from "@/components/roll-ui";
@@ -326,25 +326,13 @@ export function AwardsSection({
     {selectionOpen ? <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby={`awards-select-title-${rollId}`}>
       <div className="max-h-[94svh] w-full max-w-2xl overflow-y-auto border border-[#d6c7ad]/30 bg-[#1d1a16] p-5 shadow-2xl sm:p-7">
         <div className="flex items-start justify-between gap-5"><div><p className="eyebrow text-[#c3aa79]">THE SHORTLIST</p><h3 id={`awards-select-title-${rollId}`} className="mt-2 font-display text-3xl">A random stack of frames.</h3><p className="mt-2 text-xs leading-5 text-[#9b9387]">We’ll randomly analyze {selectedIds.length} of {photos.length} photos for this ceremony, up to {maxPhotos} total.</p></div><button onClick={() => setSelectionOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 text-[#ccc2b0]" aria-label="Close Awards settings"><X size={16}/></button></div>
-        {isCloudRoll && <div className="mt-5 grid gap-4 border-y border-white/10 py-4 sm:grid-cols-2">
-          <div className="sm:col-span-2 flex items-center justify-between gap-4">
-            <div><p className="font-mono text-[9px] tracking-[.12em] text-[#d9c59c]">PROFANITY</p><p className="mt-1 text-[10px] leading-4 text-[#918a7e]">Allow natural swearing in the jokes.</p></div>
-            <button type="button" role="switch" aria-checked={settings.profanity} disabled={!serverState?.canEditSettings || settingsSaving} onClick={() => void updateSettings({ ...settings, profanity: !settings.profanity })} className={`relative h-7 w-12 shrink-0 border transition disabled:opacity-50 ${settings.profanity ? "border-[#c5a978] bg-[#8d7147]" : "border-white/20 bg-[#27231d]"}`} aria-label="Allow profanity"><span className={`absolute top-1 h-5 w-5 bg-[#f0e5cf] transition-all ${settings.profanity ? "left-6" : "left-1"}`}/></button>
+        {isCloudRoll && <div className="mt-5 border-y border-white/10 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div><p className="font-mono text-[9px] tracking-[.12em] text-[#d9c59c]">18+</p><p className="mt-1 text-[10px] leading-4 text-[#918a7e]">{settings.profanity ? "Uncensored swearing in captions." : "Clean captions with no swearing."}</p></div>
+            <button type="button" role="switch" aria-checked={settings.profanity} disabled={!serverState?.canEditSettings || settingsSaving} onClick={() => void updateSettings({ profanity: !settings.profanity })} className={`relative h-7 w-12 shrink-0 border transition disabled:opacity-50 ${settings.profanity ? "border-[#c5a978] bg-[#8d7147]" : "border-white/20 bg-[#27231d]"}`} aria-label="18+ mode"><span className={`absolute top-1 h-5 w-5 bg-[#f0e5cf] transition-all ${settings.profanity ? "left-6" : "left-1"}`}/></button>
           </div>
-          <label className="grid gap-1.5 text-[9px] font-mono tracking-[.1em] text-[#d9c59c]">ROAST INTENSITY
-            <select value={settings.roastIntensity} disabled={!serverState?.canEditSettings || settingsSaving} onChange={(event) => void updateSettings({ ...settings, roastIntensity: event.target.value as RoastIntensity })} className="field min-h-10 text-xs font-sans normal-case tracking-normal disabled:opacity-50">
-              {ROAST_INTENSITIES.map((intensity) => <option key={intensity} value={intensity}>{intensity === "mild" ? "Mild" : intensity === "unhinged" ? "Unhinged" : "Savage"}</option>)}
-            </select>
-            <span className="font-sans text-[10px] font-normal normal-case leading-4 tracking-normal text-[#918a7e]">{settings.roastIntensity === "mild" ? "Playful teasing and light sarcasm." : settings.roastIntensity === "unhinged" ? "Absurd, aggressive group-chat sarcasm." : "Maximum roast energy for harmless photo details."}</span>
-          </label>
-          <label className="grid gap-1.5 text-[9px] font-mono tracking-[.1em] text-[#d9c59c]">HUMOR STYLE
-            <select value={settings.humorStyle} disabled={!serverState?.canEditSettings || settingsSaving} onChange={(event) => void updateSettings({ ...settings, humorStyle: event.target.value as HumorStyle })} className="field min-h-10 text-xs font-sans normal-case tracking-normal disabled:opacity-50">
-              {HUMOR_STYLES.map((style) => <option key={style} value={style}>{style === "brainrot" ? "Brainrot" : style === "dry_sarcasm" ? "Dry Sarcasm" : style === "fake_hype" ? "Fake Hype" : "Unfiltered Friend"}</option>)}
-            </select>
-            <span className="font-sans text-[10px] font-normal normal-case leading-4 tracking-normal text-[#918a7e]">{settings.humorStyle === "brainrot" ? "Chaotic internet humor and absurd confidence." : settings.humorStyle === "dry_sarcasm" ? "Deadpan, blunt, understated jokes." : settings.humorStyle === "fake_hype" ? "Ordinary frames treated like historic wins." : "Spontaneous group-chat reactions."}</span>
-          </label>
-          {!serverState?.canEditSettings && <p className="sm:col-span-2 text-[9px] leading-4 text-[#8d8579]">{serverState?.isOwner ? "Clear the saved ceremony before changing these settings." : "Only the roll host can change these settings."}</p>}
-          {settingsSaving && <p className="sm:col-span-2 text-[9px] text-[#c3aa79]">Saving settings…</p>}
+          {!serverState?.canEditSettings && <p className="mt-3 text-[9px] leading-4 text-[#8d8579]">{serverState?.isOwner ? "Clear the saved ceremony before changing 18+ mode." : "Only the roll host can change 18+ mode."}</p>}
+          {settingsSaving && <p className="mt-3 text-[9px] text-[#c3aa79]">Saving settings…</p>}
         </div>}
         <div className="mt-5 border-t border-white/10 pt-4">
           <p className="text-xs leading-5 text-[#c2b9a8]">{providerMode === "cloudflare" ? "A vision model will analyze a random sample of reduced-size previews and look only at visible details. The previews go to Cloudflare Workers AI; Afterhours saves the award text and photo references with this roll." : isCloudRoll ? "Mock mode is on. Randomly sampled photos will not be sent to or analyzed by an AI provider." : "This sample preview randomly uses photos already in this browser. It does not upload or analyze them, and is not saved to your roll."}</p>
