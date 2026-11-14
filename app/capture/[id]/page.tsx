@@ -17,7 +17,8 @@ type OrientationControls = ScreenOrientation & { lock?: (orientation: "portrait-
 type TorchTrack = MediaStreamTrack & {
   getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean[] };
 };
-type TorchConstraints = MediaTrackConstraints & { torch?: boolean };
+type TorchConstraintSet = MediaTrackConstraintSet & { torch: boolean };
+type TorchConstraints = MediaTrackConstraints & { advanced?: TorchConstraintSet[] };
 
 const FILTERS: FilterPreset[] = [
   { id: "original", label: "Original", description: "as it was", swatch: "linear-gradient(135deg,#81796b,#39352e 58%,#b4a48b)" },
@@ -200,13 +201,17 @@ export default function CapturePage() {
       cameraStreamRef.current=stream;
       const videoTrack=stream.getVideoTracks()[0] as TorchTrack | undefined;
       let torchAvailable=false;
+      let torchValues: boolean[] | undefined;
       try {
         const capabilities=videoTrack?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean[] }) | undefined;
-        const torchValues=capabilities?.torch;
-        torchAvailable=Array.isArray(torchValues)&&torchValues.includes(true)&&torchValues.includes(false);
+        torchValues=capabilities?.torch;
       } catch {
-        // Some browsers expose the camera stream but cannot report its torch capabilities.
+        // Check browser-level constraint support below when track capabilities are unavailable.
       }
+      const supportedConstraints=navigator.mediaDevices.getSupportedConstraints?.() as (MediaTrackSupportedConstraints & { torch?: boolean }) | undefined;
+      torchAvailable=Array.isArray(torchValues)
+        ?torchValues.includes(true)&&torchValues.includes(false)
+        :facing==="environment"&&supportedConstraints?.torch===true;
       setCameraTorchAvailable(torchAvailable);
       setCameraStream(stream);
     } catch(caught) {
@@ -234,7 +239,8 @@ export default function CapturePage() {
     setCameraError("");
     try {
       const currentConstraints=track.getConstraints();
-      await track.applyConstraints({...currentConstraints,torch:nextEnabled} as TorchConstraints);
+      const otherAdvanced=(currentConstraints.advanced??[]).filter((constraint)=>!("torch" in constraint));
+      await track.applyConstraints({...currentConstraints,advanced:[...otherAdvanced,{torch:nextEnabled}]} as TorchConstraints);
       if(requestId===cameraRequestRef.current) setCameraTorchEnabled(nextEnabled);
     } catch {
       if(requestId===cameraRequestRef.current) setCameraError("The flash couldn’t be changed on this camera. Try switching cameras.");
