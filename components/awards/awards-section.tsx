@@ -291,7 +291,8 @@ export function AwardsSection({
             : <button onClick={openSelection} disabled={!photos.length || busy || (isCloudRoll && !serverState?.canGenerate)} className="button-primary min-h-12 border-[#c5a978] bg-[#9c8052] px-5 text-xs text-[#fff5df] hover:border-[#d6bd94] hover:bg-[#ae9160] disabled:cursor-not-allowed disabled:opacity-50">{isCloudRoll ? status === "failed" ? "TRY AGAIN" : "GENERATE AWARDS" : "PREVIEW SAMPLE CEREMONY"} <ArrowRight size={14}/></button>}
       </div> : null}
 
-      {error && !selectionOpen ? <p role="alert" className="mt-4 border-l-2 border-[#c55448] pl-3 text-xs leading-5 text-[#e2aa9f]">{error}</p> : null}
+      {isCloudRoll && !serverState && error && !selectionOpen ? <p role="alert" className="mt-4 border-l-2 border-[#c55448] pl-3 text-xs leading-5 text-[#e2aa9f]">{error}</p> : null}
+      {error && !selectionOpen && serverState ? <p role="alert" className="mt-4 border-l-2 border-[#c55448] pl-3 text-xs leading-5 text-[#e2aa9f]">{error}</p> : null}
       {isCloudRoll && resultProvider === "cloudflare" && status === "none" && <p className="mt-4 border-t border-white/10 pt-3 text-[9px] leading-4 text-[#837b6f]">Up to {maxPhotos} selected reduced-size photos are sent to Cloudflare Workers AI only after you confirm. Completed results are saved to this roll.</p>}
       {!isCloudRoll && <p className="mt-4 border-t border-white/10 pt-3 text-[9px] leading-4 text-[#837b6f]">Sample preview only. It stays in this browser and does not analyze or upload your photos.</p>}
     </div>

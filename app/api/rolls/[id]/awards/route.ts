@@ -60,6 +60,14 @@ async function getRequestContext(context: RouteContext) {
   if (userError || !user) return { response: jsonError("Sign in to open Awards for this roll.", 401) } as const;
   const { data: roll, error: rollError } = await supabase
     .from("rolls").select("id,status,owner_id,awards_profanity,awards_roast_intensity,awards_humor_style").eq("id", id).maybeSingle();
+  if (rollError) {
+    const errorCode = (rollError as { code?: string }).code ?? "unknown";
+    console.error("[awards] roll access lookup failed", { code: errorCode });
+    if (errorCode === "42703" || errorCode === "PGRST204") {
+      return { response: jsonError("The Awards settings columns are missing from the database. Run the Awards customization migration, then refresh.", 503, "settings_migration_missing") } as const;
+    }
+    return { response: jsonError("Awards could not check access to this roll. Check the database connection and refresh.", 503, "roll_access_check_failed") } as const;
+  }
   if (rollError || !roll) return { response: jsonError("That roll isn’t available for Awards.", 404) } as const;
   if (roll.status !== "revealed") return { response: jsonError("Awards are available after the roll is revealed.", 409) } as const;
   return { id, supabase, user, roll } as const;
