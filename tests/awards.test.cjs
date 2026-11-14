@@ -171,6 +171,49 @@ test("Cloudflare adapter uses the documented prompt plus single-image REST input
   }
 });
 
+test("Cloudflare prompt reflects every profanity, roast intensity, and humor style combination", async () => {
+  const originalFetch = global.fetch;
+  const previous = { account: process.env.CLOUDFLARE_ACCOUNT_ID, token: process.env.CLOUDFLARE_API_TOKEN };
+  const intensities = {
+    mild: "Use playful teasing, light sarcasm, and funny observations.",
+    unhinged: "Use aggressive sarcasm, absurd commentary, backhanded compliments",
+    savage: "Use maximum comedic intensity: be brutally sarcastic",
+  };
+  const styles = {
+    brainrot: "Use ironic internet humor, absurd exaggeration",
+    dry_sarcasm: "Use deadpan delivery, understated insults",
+    fake_hype: "Treat ordinary photographs like historic achievements",
+    unfiltered_friend: "Use spontaneous, unpredictable reactions",
+  };
+  try {
+    process.env.CLOUDFLARE_ACCOUNT_ID = "account-test";
+    process.env.CLOUDFLARE_API_TOKEN = "test-token";
+    global.fetch = async (_url, options) => {
+      const requestBody = JSON.parse(options.body);
+      global.lastAwardsPrompt = requestBody.prompt;
+      return new Response(JSON.stringify({ success: true, result: { response: "Award Title: Funniest Photo\nVisual Note: A hat sits on the chair.\nScore: 4\nExplanation: The hat got here before the plans did." } }), { status: 200 });
+    };
+
+    for (const profanity of [false, true]) {
+      for (const [roastIntensity, intensityText] of Object.entries(intensities)) {
+        for (const [humorStyle, styleText] of Object.entries(styles)) {
+          const provider = new CloudflareAwardsProvider({ profanity, roastIntensity, humorStyle });
+          await provider.analyzePhoto({ id: photoIds[0], imageDataUrl: "data:image/jpeg;base64,YWJj" });
+          assert.ok(global.lastAwardsPrompt.includes(intensityText));
+          assert.ok(global.lastAwardsPrompt.includes(styleText));
+          assert.match(global.lastAwardsPrompt, profanity
+            ? /Profanity is allowed/ : /Do not use profanity or swear words at all/);
+        }
+      }
+    }
+  } finally {
+    global.fetch = originalFetch;
+    delete global.lastAwardsPrompt;
+    if (previous.account === undefined) delete process.env.CLOUDFLARE_ACCOUNT_ID; else process.env.CLOUDFLARE_ACCOUNT_ID = previous.account;
+    if (previous.token === undefined) delete process.env.CLOUDFLARE_API_TOKEN; else process.env.CLOUDFLARE_API_TOKEN = previous.token;
+  }
+});
+
 test("Cloudflare adapter rejects invalid model output without exposing its contents", async () => {
   const originalFetch = global.fetch;
   const previous = { account: process.env.CLOUDFLARE_ACCOUNT_ID, token: process.env.CLOUDFLARE_API_TOKEN };
@@ -271,6 +314,38 @@ test("Awards API persists mock results with selected photo IDs and never calls C
   assert.deepEqual(activeSupabase.calls.map((call) => call.name), ["claim_roll_awards", "complete_roll_awards"]);
   assert.deepEqual(activeSupabase.calls[0].args.target_photo_ids, [selectedPhoto]);
   assert.equal(activeSupabase.calls[1].args.target_provider, "mock");
+});
+
+test("Awards API randomly samples available roll photos on the server", async () => {
+  const previousMockMode = process.env.AWARDS_MOCK_MODE;
+  const previousPhotoLimit = process.env.AWARDS_MAX_PHOTOS;
+  process.env.AWARDS_MOCK_MODE = "true";
+  process.env.AWARDS_MAX_PHOTOS = "2";
+  const availablePhotos = photoIds.slice(0, 5).map((id) => ({ id, object_path: `u/${rollId}/${id}.jpg` }));
+  let claimedPhotoIds = [];
+  activeSupabase = fakeSupabase({
+    user: { id: userId },
+    roll: revealedRoll(),
+    photos: availablePhotos,
+    rpcHandlers: {
+      claim_roll_awards: (args) => {
+        claimedPhotoIds = args.target_photo_ids;
+        return { data: { state: "claimed", id: "33333333-3333-4333-8333-333333333333" }, error: null };
+      },
+      complete_roll_awards: () => ({ data: true, error: null }),
+    },
+  });
+  try {
+    const response = await awardsRoute.POST(postRequest({ photoIds: [photoIds[9]], consent: true }), routeContext());
+    assert.equal(response.status, 200);
+    assert.equal(claimedPhotoIds.length, 2);
+    assert.equal(new Set(claimedPhotoIds).size, claimedPhotoIds.length);
+    assert.ok(claimedPhotoIds.every((id) => availablePhotos.some((photo) => photo.id === id)));
+    assert.ok(!claimedPhotoIds.includes(photoIds[9]));
+  } finally {
+    if (previousMockMode === undefined) delete process.env.AWARDS_MOCK_MODE; else process.env.AWARDS_MOCK_MODE = previousMockMode;
+    if (previousPhotoLimit === undefined) delete process.env.AWARDS_MAX_PHOTOS; else process.env.AWARDS_MAX_PHOTOS = previousPhotoLimit;
+  }
 });
 
 test("Awards API returns a friendly rate-limit error before contacting a provider", async () => {

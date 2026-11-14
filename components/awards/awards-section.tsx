@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Crown, LoaderCircle, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Crown, LoaderCircle, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Award, AwardsResult } from "@/lib/ai/awards-types";
+import { DEFAULT_AWARDS_SETTINGS, HUMOR_STYLES, ROAST_INTENSITIES, type AwardsSettings, type HumorStyle, type RoastIntensity } from "@/lib/ai/awards-settings";
 import { PhotoImage } from "@/components/photo-image";
 import type { Photo } from "@/lib/types";
 import { formatDate } from "@/components/roll-ui";
@@ -17,6 +18,9 @@ type ServerState = {
   maxPhotos: number;
   canGenerate: boolean;
   canDelete: boolean;
+  isOwner: boolean;
+  canEditSettings: boolean;
+  settings: AwardsSettings;
 };
 
 const sampleTitles = [
@@ -63,6 +67,8 @@ export function AwardsSection({
   const [awardsResult, setAwardsResult] = useState<AwardsResult | null>(null);
   const [resultProvider, setResultProvider] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [settings, setSettings] = useState<AwardsSettings>(DEFAULT_AWARDS_SETTINGS);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [consent, setConsent] = useState(false);
   const [selectionOpen, setSelectionOpen] = useState(false);
   const [ceremonyStep, setCeremonyStep] = useState(-3);
@@ -87,6 +93,7 @@ export function AwardsSection({
       setStatus(next.generationStatus);
       setAwardsResult(next.awards);
       setResultProvider(next.provider);
+      setSettings(next.settings ?? DEFAULT_AWARDS_SETTINGS);
       return next.generationStatus;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Awards couldn’t be loaded.");
@@ -123,18 +130,41 @@ export function AwardsSection({
   function openSelection() {
     setError("");
     setConsent(false);
-    setSelectedIds(photos.slice(0, maxPhotos).map((photo) => photo.id));
+    const shuffled = [...photos];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    setSelectedIds(shuffled.slice(0, maxPhotos).map((photo) => photo.id));
     setSelectionOpen(true);
   }
 
-  function togglePhoto(photoId: string) {
-    setSelectedIds((current) => current.includes(photoId)
-      ? current.filter((id) => id !== photoId)
-      : current.length >= maxPhotos ? current : [...current, photoId]);
+  async function updateSettings(next: AwardsSettings) {
+    if (!serverState?.canEditSettings || settingsSaving) return;
+    const previous = settings;
+    setSettings(next);
+    setSettingsSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/rolls/${rollId}/awards`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: next }),
+      });
+      const payload = await response.json() as { settings?: AwardsSettings; error?: string };
+      if (!response.ok || !payload.settings) throw new Error(payload.error ?? "Awards settings couldn’t be saved.");
+      setSettings(payload.settings);
+      setServerState((current) => current ? { ...current, settings: payload.settings! } : current);
+    } catch (caught) {
+      setSettings(previous);
+      setError(caught instanceof Error ? caught.message : "Awards settings couldn’t be saved.");
+    } finally {
+      setSettingsSaving(false);
+    }
   }
 
   async function startGeneration() {
-    if (!selectedIds.length || !consent) return;
+    if (!selectedIds.length || !consent || settingsSaving) return;
     setBusy(true);
     setError("");
     setSelectionOpen(false);
@@ -294,22 +324,33 @@ export function AwardsSection({
 
     {selectionOpen ? <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby={`awards-select-title-${rollId}`}>
       <div className="max-h-[94svh] w-full max-w-2xl overflow-y-auto border border-[#d6c7ad]/30 bg-[#1d1a16] p-5 shadow-2xl sm:p-7">
-        <div className="flex items-start justify-between gap-5"><div><p className="eyebrow text-[#c3aa79]">THE SHORTLIST</p><h3 id={`awards-select-title-${rollId}`} className="mt-2 font-display text-3xl">Choose the frames.</h3><p className="mt-2 text-xs leading-5 text-[#9b9387]">Pick up to {maxPhotos} photos for this ceremony. Only your selected photos are considered.</p></div><button onClick={() => setSelectionOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 text-[#ccc2b0]" aria-label="Close photo selection"><X size={16}/></button></div>
-        <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4">{photos.map((photo, index) => {
-          const checked = selectedIds.includes(photo.id);
-          const atLimit = !checked && selectedIds.length >= maxPhotos;
-          return <button type="button" key={photo.id} onClick={() => togglePhoto(photo.id)} disabled={atLimit} aria-pressed={checked} className={`choice-card relative aspect-square overflow-hidden border text-left disabled:opacity-40 ${checked ? "border-[#dbbf86] ring-1 ring-[#dbbf86]/50" : "border-white/10"}`}>
-            <PhotoImage src={photo.src} thumbnailSrc={photo.thumbnailSrc} alt={photo.caption || `Photo ${index + 1}`} className="h-full w-full object-cover"/>
-            <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/85 to-transparent px-2 pb-2 pt-6 font-mono text-[8px] tracking-[.08em] text-white"><span>FRAME {String(index + 1).padStart(2, "0")}</span><span className={`grid h-5 w-5 place-items-center border ${checked ? "border-[#dbbf86] bg-[#b89455]" : "border-white/60 bg-black/25"}`}>{checked && <Check size={12}/>}</span></span>
-          </button>;
-        })}</div>
-        <p className="mt-3 font-mono text-[8px] tracking-[.13em] text-[#81796e]">{selectedIds.length} / {maxPhotos} SELECTED</p>
+        <div className="flex items-start justify-between gap-5"><div><p className="eyebrow text-[#c3aa79]">THE SHORTLIST</p><h3 id={`awards-select-title-${rollId}`} className="mt-2 font-display text-3xl">A random stack of frames.</h3><p className="mt-2 text-xs leading-5 text-[#9b9387]">We’ll randomly analyze {selectedIds.length} of {photos.length} photos for this ceremony, up to {maxPhotos} total.</p></div><button onClick={() => setSelectionOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 text-[#ccc2b0]" aria-label="Close Awards settings"><X size={16}/></button></div>
+        {isCloudRoll && <div className="mt-5 grid gap-4 border-y border-white/10 py-4 sm:grid-cols-2">
+          <div className="sm:col-span-2 flex items-center justify-between gap-4">
+            <div><p className="font-mono text-[9px] tracking-[.12em] text-[#d9c59c]">PROFANITY</p><p className="mt-1 text-[10px] leading-4 text-[#918a7e]">Allow natural swearing in the jokes.</p></div>
+            <button type="button" role="switch" aria-checked={settings.profanity} disabled={!serverState?.canEditSettings || settingsSaving} onClick={() => void updateSettings({ ...settings, profanity: !settings.profanity })} className={`relative h-7 w-12 shrink-0 border transition disabled:opacity-50 ${settings.profanity ? "border-[#c5a978] bg-[#8d7147]" : "border-white/20 bg-[#27231d]"}`} aria-label="Allow profanity"><span className={`absolute top-1 h-5 w-5 bg-[#f0e5cf] transition-all ${settings.profanity ? "left-6" : "left-1"}`}/></button>
+          </div>
+          <label className="grid gap-1.5 text-[9px] font-mono tracking-[.1em] text-[#d9c59c]">ROAST INTENSITY
+            <select value={settings.roastIntensity} disabled={!serverState?.canEditSettings || settingsSaving} onChange={(event) => void updateSettings({ ...settings, roastIntensity: event.target.value as RoastIntensity })} className="field min-h-10 text-xs font-sans normal-case tracking-normal disabled:opacity-50">
+              {ROAST_INTENSITIES.map((intensity) => <option key={intensity} value={intensity}>{intensity === "mild" ? "Mild" : intensity === "unhinged" ? "Unhinged" : "Savage"}</option>)}
+            </select>
+            <span className="font-sans text-[10px] font-normal normal-case leading-4 tracking-normal text-[#918a7e]">{settings.roastIntensity === "mild" ? "Playful teasing and light sarcasm." : settings.roastIntensity === "unhinged" ? "Absurd, aggressive group-chat sarcasm." : "Maximum roast energy for harmless photo details."}</span>
+          </label>
+          <label className="grid gap-1.5 text-[9px] font-mono tracking-[.1em] text-[#d9c59c]">HUMOR STYLE
+            <select value={settings.humorStyle} disabled={!serverState?.canEditSettings || settingsSaving} onChange={(event) => void updateSettings({ ...settings, humorStyle: event.target.value as HumorStyle })} className="field min-h-10 text-xs font-sans normal-case tracking-normal disabled:opacity-50">
+              {HUMOR_STYLES.map((style) => <option key={style} value={style}>{style === "brainrot" ? "Brainrot" : style === "dry_sarcasm" ? "Dry Sarcasm" : style === "fake_hype" ? "Fake Hype" : "Unfiltered Friend"}</option>)}
+            </select>
+            <span className="font-sans text-[10px] font-normal normal-case leading-4 tracking-normal text-[#918a7e]">{settings.humorStyle === "brainrot" ? "Chaotic internet humor and absurd confidence." : settings.humorStyle === "dry_sarcasm" ? "Deadpan, blunt, understated jokes." : settings.humorStyle === "fake_hype" ? "Ordinary frames treated like historic wins." : "Spontaneous group-chat reactions."}</span>
+          </label>
+          {!serverState?.canEditSettings && <p className="sm:col-span-2 text-[9px] leading-4 text-[#8d8579]">{serverState?.isOwner ? "Clear the saved ceremony before changing these settings." : "Only the roll host can change these settings."}</p>}
+          {settingsSaving && <p className="sm:col-span-2 text-[9px] text-[#c3aa79]">Saving settings…</p>}
+        </div>}
         <div className="mt-5 border-t border-white/10 pt-4">
-          <p className="text-xs leading-5 text-[#c2b9a8]">{providerMode === "cloudflare" ? "A vision model looks for visible objects, setting, composition, and clear moments. It must not identify people or infer personal traits. The selected reduced-size previews are sent to Cloudflare Workers AI. Afterhours saves award text and photo references with this roll, not another copy of the photos." : isCloudRoll ? "Mock mode is on. These are sample awards; the selected photos will not be sent to or analyzed by an AI provider." : "This sample preview does not upload or analyze photos. It is not saved to your roll."}</p>
-          <label className="mt-4 flex cursor-pointer items-start gap-3 text-[11px] leading-5 text-[#ddd4c5]"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-[#b89455]"/><span>{providerMode === "cloudflare" ? "I agree to send the selected photo previews to Cloudflare Workers AI for this Awards ceremony." : "I understand this is a sample preview and my photos will not be analyzed."}</span></label>
+          <p className="text-xs leading-5 text-[#c2b9a8]">{providerMode === "cloudflare" ? "A vision model will analyze a random sample of reduced-size previews and look only at visible details. The previews go to Cloudflare Workers AI; Afterhours saves the award text and photo references with this roll." : isCloudRoll ? "Mock mode is on. Randomly sampled photos will not be sent to or analyzed by an AI provider." : "This sample preview randomly uses photos already in this browser. It does not upload or analyze them, and is not saved to your roll."}</p>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 text-[11px] leading-5 text-[#ddd4c5]"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-[#b89455]"/><span>{providerMode === "cloudflare" ? "I agree to send the random photo sample to Cloudflare Workers AI for this Awards ceremony." : "I understand this is a sample preview and my photos will not be analyzed."}</span></label>
         </div>
         {error && <p role="alert" className="mt-3 text-xs text-[#e2aa9f]">{error}</p>}
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button onClick={() => setSelectionOpen(false)} className="button-secondary min-h-11 px-5 text-[10px]">NOT NOW</button><button onClick={startGeneration} disabled={!selectedIds.length || !consent || busy} className="button-primary min-h-11 border-[#c5a978] bg-[#9c8052] px-5 text-[10px] text-[#fff5df] hover:bg-[#ae9160] disabled:cursor-not-allowed disabled:opacity-50">{providerMode === "cloudflare" ? "GENERATE AWARDS" : "START SAMPLE CEREMONY"} <ArrowRight size={13}/></button></div>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button onClick={() => setSelectionOpen(false)} className="button-secondary min-h-11 px-5 text-[10px]">NOT NOW</button><button onClick={startGeneration} disabled={!selectedIds.length || !consent || busy || settingsSaving} className="button-primary min-h-11 border-[#c5a978] bg-[#9c8052] px-5 text-[10px] text-[#fff5df] hover:bg-[#ae9160] disabled:cursor-not-allowed disabled:opacity-50">{providerMode === "cloudflare" ? "GENERATE AWARDS" : "START SAMPLE CEREMONY"} <ArrowRight size={13}/></button></div>
       </div>
     </div> : null}
   </section>;

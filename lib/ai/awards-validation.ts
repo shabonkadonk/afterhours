@@ -108,13 +108,12 @@ export function buildAwardsResult(candidates: AwardCandidate[], selectedPhotoIds
   let finale = selected.find((item) => item.title === "Photo of the Night");
   if (!finale) {
     const standout = [...candidates].sort((a, b) => b.score - a.score)[0];
-    const description = standout.visualNote || "The frame that holds the clearest visual moment.";
     finale = {
       title: "Photo of the Night",
       winner: {
         ...standout,
         awardTitle: "Photo of the Night",
-        explanation: `The clearest standout of the night: ${description}`.slice(0, 180),
+        explanation: standout.explanation || standout.visualNote || "",
       },
       runnerUpPhotoId: candidates.find((candidate) => candidate.photoId !== standout.photoId)?.photoId ?? null,
     };

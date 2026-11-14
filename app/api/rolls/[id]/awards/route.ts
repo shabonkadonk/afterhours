@@ -1,8 +1,10 @@
+import { randomInt } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { AwardsProviderError } from "@/lib/ai/awards-types";
 import { CloudflareAwardsProvider, DEFAULT_CLOUDFLARE_AWARDS_MODEL, MAX_AWARDS_IMAGE_BYTES } from "@/lib/ai/cloudflare-provider";
 import { generateAwards } from "@/lib/ai/awards-service";
 import { MockAwardsProvider } from "@/lib/ai/mock-provider";
+import { awardsSettingsFromRoll, parseAwardsSettings } from "@/lib/ai/awards-settings";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -57,7 +59,7 @@ async function getRequestContext(context: RouteContext) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) return { response: jsonError("Sign in to open Awards for this roll.", 401) } as const;
   const { data: roll, error: rollError } = await supabase
-    .from("rolls").select("id,status,owner_id").eq("id", id).maybeSingle();
+    .from("rolls").select("id,status,owner_id,awards_profanity,awards_roast_intensity,awards_humor_style").eq("id", id).maybeSingle();
   if (rollError || !roll) return { response: jsonError("That roll isn’t available for Awards.", 404) } as const;
   if (roll.status !== "revealed") return { response: jsonError("Awards are available after the roll is revealed.", 409) } as const;
   return { id, supabase, user, roll } as const;
@@ -85,7 +87,35 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     maxPhotos: photoLimit(),
     canGenerate: mode !== "unavailable" && (status === "none" || status === "failed"),
     canDelete: access.roll.owner_id === access.user.id && status !== "none",
+    isOwner: access.roll.owner_id === access.user.id,
+    canEditSettings: access.roll.owner_id === access.user.id && (status === "none" || status === "failed"),
+    settings: awardsSettingsFromRoll(access.roll as unknown as Record<string, unknown>),
   }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const access = await getRequestContext(context);
+  if ("response" in access) return access.response;
+  if (access.roll.owner_id !== access.user.id) return jsonError("Only the roll owner can change its Awards settings.", 403);
+  let body: unknown;
+  try { body = await request.json(); } catch { return jsonError("Those Awards settings are invalid.", 400); }
+  const payload = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  const settings = parseAwardsSettings(payload.settings);
+  if (!settings) return jsonError("Choose valid values for all Awards settings.", 400, "invalid_settings");
+
+  const { data: existing, error: existingError } = await access.supabase.from("roll_awards")
+    .select("generation_status").eq("roll_id", access.id).maybeSingle();
+  if (existingError) return jsonError("Awards settings couldn’t be checked. Try again.", 503);
+  if (existing && existing.generation_status !== "failed") {
+    return jsonError("Clear the saved ceremony before changing its settings.", 409, "settings_locked");
+  }
+  const { error } = await access.supabase.from("rolls").update({
+    awards_profanity: settings.profanity,
+    awards_roast_intensity: settings.roastIntensity,
+    awards_humor_style: settings.humorStyle,
+  }).eq("id", access.id);
+  if (error) return jsonError("Awards settings couldn’t be saved. Try again.", 503);
+  return NextResponse.json({ settings }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -114,15 +144,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
   } catch { return jsonError("Choose photos and confirm before generating Awards.", 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("Choose photos and confirm before generating Awards.", 400);
-  const payload = body as { photoIds?: unknown; consent?: unknown };
+  const payload = body as { consent?: unknown };
   if (payload.consent !== true) return jsonError("Confirm the photo-processing notice before continuing.", 400, "consent_required");
   const maxPhotos = photoLimit();
-  if (!Array.isArray(payload.photoIds) || payload.photoIds.length < 1 || payload.photoIds.some((photoId) => typeof photoId !== "string" || !UUID_PATTERN.test(photoId))) {
-    return jsonError("Select at least one available photo.", 400, "invalid_selection");
-  }
-  const photoIds = payload.photoIds as string[];
-  if (new Set(photoIds).size !== photoIds.length) return jsonError("A selected photo appears more than once.", 400, "invalid_selection");
-  if (photoIds.length > maxPhotos) return jsonError(`Choose up to ${maxPhotos} photos for one ceremony.`, 400, "too_many_photos");
 
   const mode = providerMode();
   if (mode === "unavailable") return jsonError("Awards aren’t ready yet. The provider or its privacy and eligibility checks still need configuration.", 503, "provider_unavailable");
@@ -137,11 +161,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return jsonError("Awards are already being prepared for this roll.", 409, "generation_in_progress");
   }
 
-  const { data: photoRows, error: photoError } = await access.supabase.from("photos")
-    .select("id,object_path").eq("roll_id", access.id).in("id", photoIds);
-  if (photoError || !photoRows || photoRows.length !== photoIds.length) {
-    return jsonError("One or more selected photos are no longer available in this roll.", 400, "photo_unavailable");
+  const { data: allPhotoRows, error: photoError } = await access.supabase.from("photos")
+    .select("id,object_path").eq("roll_id", access.id);
+  if (photoError || !allPhotoRows?.length) return jsonError("There are no photos available for this ceremony.", 400, "no_photos");
+  const shuffledPhotoRows = [...allPhotoRows];
+  for (let index = shuffledPhotoRows.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [shuffledPhotoRows[index], shuffledPhotoRows[swapIndex]] = [shuffledPhotoRows[swapIndex], shuffledPhotoRows[index]];
   }
+  const photoRows = shuffledPhotoRows.slice(0, maxPhotos);
+  const photoIds = photoRows.map((photo) => photo.id as string);
 
   let preparedPhotos: Array<{ id: string; imageDataUrl?: string }> = photoRows.map((photo) => ({ id: photo.id as string }));
   if (mode === "cloudflare") {
@@ -188,7 +217,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (claimResult.state !== "claimed" || !claimResult.id) return jsonError("Awards couldn’t be started. Try again.", 503);
 
   try {
-    const provider = mode === "mock" ? new MockAwardsProvider() : new CloudflareAwardsProvider();
+    const provider = mode === "mock" ? new MockAwardsProvider() : new CloudflareAwardsProvider(awardsSettingsFromRoll(access.roll as unknown as Record<string, unknown>));
     const result = await generateAwards(provider, preparedPhotos);
     const { data: completed, error: completeError } = await access.supabase.rpc("complete_roll_awards", {
       target_generation_id: claimResult.id,
