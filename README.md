@@ -62,10 +62,12 @@ Use the same generated value for `CRON_SECRET` in local configuration and Vercel
 ### Supabase setup
 
 1. Create a Supabase project. In **Project Settings → API Keys**, copy the project URL and publishable key. Put these in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-2. In **Authentication → Sign In / Providers**, enable Email for hosts and **Anonymous Sign-Ins** for guests. Enable Google if you want Google host sign-in.
+2. In **Authentication → Sign In / Providers**, enable Email for hosts and **Anonymous Sign-Ins** for guests. Enable Google if you want Google host sign-in. Enable manual identity linking in Auth settings if guests should be able to keep their current roll memberships while linking Google.
 3. In **Authentication → URL Configuration**, set the local Site URL to `http://localhost:3000` and add `http://localhost:3000/auth/callback` to the redirect URLs. If Next.js chooses another port, use that port instead.
 4. Apply every SQL migration in [`supabase/migrations`](supabase/migrations) in filename order, using the Supabase SQL Editor or the Supabase CLI. Migrations are incremental; do not skip earlier files on a new project.
 5. Restart the development server after changing `.env.local`.
+
+Guests can open **Account** and link an email to turn the current guest session into a permanent account while keeping its existing roll memberships. When email confirmation is enabled, confirm the address first, then set a password from **Account**. Google linking keeps the guest session when manual identity linking is enabled in Supabase; signing in to an existing account switches sessions.
 
 The current Supabase dashboard may label the privileged key **Secret key** (`sb_secret_...`); older projects may show the legacy `service_role` key. Put that server-only key in `SUPABASE_SERVICE_ROLE_KEY`; the variable name is retained for this project's server configuration. Do not use the publishable key in its place.
 

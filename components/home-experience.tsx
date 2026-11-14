@@ -20,10 +20,11 @@ function InstalledHome() {
       <p className="eyebrow">THE GOOD NIGHTS</p>
       <h1 className="font-display">Keep the night.</h1>
       <div className="installed-home__actions">
-        {!guest && <Link href="/rolls/new" className="button-primary"><Plus size={17}/> Create a roll</Link>}
+        <Link href="/rolls/new" className="button-primary"><Plus size={17}/> Create a roll</Link>
         <Link href="/join" className="button-secondary"><KeyRound size={16}/> Join a roll</Link>
       </div>
-      {configured && !user && <p className="installed-home__signin">Host a roll? <Link href="/login?next=%2Frolls%2Fnew">Sign in</Link></p>}
+      {configured && guest && <p className="installed-home__signin">Keep access to your guest rolls. <Link href="/account">Create an account</Link></p>}
+      {configured && !user && <p className="installed-home__signin">Want an account? <Link href="/login?next=%2Fdashboard">Sign in or create one</Link></p>}
     </section>
 
     {!ready ? <p className="installed-home__loading" role="status">Opening your rolls…</p> : <>

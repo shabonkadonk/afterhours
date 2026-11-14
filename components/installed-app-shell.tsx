@@ -26,9 +26,13 @@ function AppNavigation() {
   const guest = Boolean(user?.is_anonymous);
   const items = [
     { href: "/", label: "Home", icon: House, active: path === "/" || path === "/dashboard" },
-    ...(!guest ? [{ href: "/rolls/new", label: "Create", icon: Camera, active: path === "/rolls/new" }] : []),
+    { href: "/rolls/new", label: "Create", icon: Camera, active: path === "/rolls/new" },
     ...(guest || (configured && !user) ? [{ href: "/join", label: "Join", icon: KeyRound, active: path.startsWith("/join") }] : []),
-    ...(user && !guest ? [{ href: "/account", label: "Profile", icon: UserRound, active: path === "/account" }] : []),
+    ...(user
+      ? [{ href: "/account", label: guest ? "Account" : "Profile", icon: UserRound, active: path === "/account" }]
+      : configured
+        ? [{ href: "/login?next=%2Fdashboard", label: "Sign in", icon: UserRound, active: path === "/login" }]
+        : []),
   ];
 
   return <nav className="installed-nav" aria-label="App navigation" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
