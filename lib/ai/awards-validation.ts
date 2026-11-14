@@ -5,7 +5,13 @@ const allowedCategories = new Set<string>(AWARD_CATEGORIES);
 const unsafePersonalClaims = /\b(?:attractive|beauty|sexy|ugly|fat|skinny|dating|boyfriend|girlfriend|husband|wife|pregnant|race|ethnicity|religion|disabled|disability|gay|lesbian|transgender|drunk|intoxicated|high)\b/i;
 
 function cleanText(value: string, maxLength: number) {
-  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) return cleaned;
+
+  const clipped = cleaned.slice(0, maxLength - 1);
+  const lastSpace = clipped.lastIndexOf(" ");
+  const readableEnd = lastSpace > maxLength * 0.65 ? clipped.slice(0, lastSpace) : clipped;
+  return `${readableEnd.trimEnd()}…`;
 }
 
 export function parseAwardCandidate(value: unknown, photoId: string): AwardCandidate | null {
