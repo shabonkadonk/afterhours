@@ -13,8 +13,8 @@ Afterhours is a Next.js 16 app. Vercel detects the framework and supplies the bu
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Project URL from Supabase **Project Settings → API** | Accounts and shared rolls |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key (or legacy anon key) from Supabase **Project Settings → API** | Accounts and shared rolls |
-| `SUPABASE_SERVICE_ROLE_KEY` | Secret service-role key from Supabase **Project Settings → API** | Secure invitation joins and photo expiration cleanup |
-| `CRON_SECRET` | Long random secret that you generate | Authorizes the scheduled expiration route |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret service-role key from Supabase **Project Settings → API** | Secure invitation joins, roll alerts, and photo expiration cleanup |
+| `CRON_SECRET` | Long random secret that you generate | Authorizes both scheduled routes |
 
 Afterhours Awards starts in sample mode and does not send photos to an AI provider. If you later complete the Cloudflare account, model license, privacy, and age checks described in [Afterhours Awards setup](afterhours-awards.md), add its server-only variables to Vercel. Keep `AWARDS_MOCK_MODE=true`, `AWARDS_LIVE_PROCESSING_ENABLED=false`, and `AWARDS_PROVIDER_REQUIREMENTS_CONFIRMED=false` until those checks are complete.
 
@@ -44,15 +44,54 @@ Keep both live gates false and mock mode true until those checks are complete. T
 
 The app needs a configured Supabase project for real user accounts, shared rolls, and persistent photos. Without it, the site uses local demo mode, which only saves data in each visitor's browser.
 
-1. In the Supabase project, open **SQL Editor** and run every file under `supabase/migrations` in filename order if you have not already done so. This includes `20261105000000_afterhours_awards.sql` for saved ceremonies and `20261106000000_host_guest_expiration.sql` for guest invitations, retention, and the related RLS/Storage policies. The new migration adds columns and policies without dropping existing roll or photo rows.
+1. In the Supabase project, open **SQL Editor** and run every file under `supabase/migrations` in filename order if you have not already done so. This includes `20261105000000_afterhours_awards.sql` for saved ceremonies, `20261106000000_host_guest_expiration.sql` for guest invitations and retention, and `20261115000000_roll_reveal_notifications.sql` for guest frame counters and scheduled reveal alerts. These migrations add columns and policies without dropping existing roll or photo rows.
 2. Open **Authentication → URL Configuration**.
 3. Set **Site URL** to the deployed production origin, for example `https://afterhours-example.vercel.app` (no path or trailing slash).
 4. Add `https://afterhours-example.vercel.app/auth/callback` to **Redirect URLs** and save. Add your custom-domain callback there too after attaching a domain.
 5. Open **Authentication → Sign In / Providers** and enable **Anonymous Sign-Ins** for guests. Keep Email enabled for hosts. Configure CAPTCHA under **Bot and Abuse Protection** if you enable it for anonymous sign-ins.
 
-The checked-in `vercel.json` runs `/api/cron/expire-rolls` once daily at 08:15 UTC on production deployments. Hobby runs daily cron jobs within the scheduled hour; Pro and Enterprise provide per-minute precision. See [Vercel Cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing). Generate a random `CRON_SECRET` with at least 16 characters and configure it in the Production environment; Vercel sends it to the route as a bearer token. The route removes expired roll files from Storage before deleting roll records. Hosts can renew from the gallery during the 7-day grace period. After changing environment variables, redeploy so the server functions receive them.
+The checked-in `vercel.json` runs `/api/cron/expire-rolls` once daily at 08:15 UTC on production deployments. Generate a random `CRON_SECRET` with at least 16 characters and configure it in the Production environment; Vercel sends it to the route as a bearer token. The route removes expired roll files from Storage before deleting roll records. Hosts can renew from the gallery during the 7-day grace period.
 
-Guests receive an in-app expiry notice. This project has no email provider or email reminder job configured.
+### Schedule the five-minute and reveal alerts
+
+`/api/cron/roll-lifecycle` checks once a minute for rolls that end in about five minutes, sends a randomized reminder to subscribed members, reveals due rolls, and sends the reveal alert. Configure one minute-level scheduler for this route. Its database claims prevent overlapping calls from claiming the same reminder or reveal twice.
+
+Vercel Hobby permits only daily cron jobs; a more frequent cron expression fails deployment. Vercel Pro and Enterprise support per-minute schedules. See [Vercel Cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing). If the project is on Pro or Enterprise, add this cron entry to the `crons` array in `vercel.json`:
+
+```json
+{
+  "path": "/api/cron/roll-lifecycle",
+  "schedule": "* * * * *"
+}
+```
+
+On Hobby, use Supabase Cron to call the same endpoint once a minute. Enable the `pg_cron` and `pg_net` extensions in the Supabase dashboard, then store the production origin and the same `CRON_SECRET` in Supabase Vault:
+
+```sql
+select vault.create_secret('https://afterhours-example.vercel.app', 'afterhours_site_url');
+select vault.create_secret('replace-with-the-production-CRON_SECRET', 'afterhours_cron_secret');
+```
+
+Create the scheduled request:
+
+```sql
+select cron.schedule(
+  'afterhours-roll-lifecycle',
+  '* * * * *',
+  $$
+    select net.http_get(
+      url := (select decrypted_secret from vault.decrypted_secrets where name = 'afterhours_site_url') || '/api/cron/roll-lifecycle',
+      headers := jsonb_build_object(
+        'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'afterhours_cron_secret')
+      )
+    );
+  $$
+);
+```
+
+Replace the example origin and secret with the values for the production deployment. After changing Vercel environment variables, redeploy so the server functions receive them. Guests must enable push from their disposable camera while using the installed app; the camera and gallery remain tied to their anonymous session.
+
+Guests receive in-app expiry notices. This project has no email provider configured.
 
 ## Enable Google sign-in
 

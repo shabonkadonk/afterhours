@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Photo, Roll } from "@/lib/types";
+import { guestCameraFrameLimit } from "@/lib/guest-camera-session";
 
 type RollInput = { name: string; endsAt: string; photoLimit: number; theme: string };
 type PhotoInput = (Omit<Photo, "id" | "at" | "by"> & { uploadId?: string })[];
@@ -188,6 +189,18 @@ export async function addCloudPhotos(supabase: SupabaseClient, user: User, rollI
   }
   const newFrameCount = additions.length - reservedById.size;
   if (roll.photo_count + newFrameCount > roll.photo_limit) throw new Error("There aren’t enough frames left for these photos.");
+  if (!isOwner && newFrameCount > 0) {
+    const [{ count, error: frameCountError }, { count: participantCount, error: participantError }] = await Promise.all([
+      supabase.from("photos").select("id", { count: "exact", head: true }).eq("roll_id", rollId).eq("uploaded_by", user.id),
+      supabase.from("roll_members").select("user_id", { count: "exact", head: true }).eq("roll_id", rollId),
+    ]);
+    if (frameCountError) throw backendError(frameCountError);
+    if (participantError) throw backendError(participantError);
+    const frameLimit = guestCameraFrameLimit(roll.photo_limit, participantCount ?? 1);
+    if ((count ?? 0) + newFrameCount > frameLimit) {
+      throw new Error(`This disposable camera has ${frameLimit} ${frameLimit === 1 ? "frame" : "frames"} for the current roll size.`);
+    }
+  }
 
   for (const item of additions) {
     const response = await fetch(item.src);

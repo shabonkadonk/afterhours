@@ -32,7 +32,7 @@ export function SiteHeader() {
 
   useEffect(() => { setMobileDevice(isMobileDevice()); }, []);
 
-  if (isInstalled) return null;
+  if (isInstalled || isGuest) return null;
   return (
     <>
     <header className="site-header relative z-20 border-b border-white/10 bg-[#141311]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">

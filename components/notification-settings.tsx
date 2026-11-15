@@ -21,7 +21,7 @@ async function postSubscription(subscription: PushSubscription) {
   if (!response.ok) throw new Error(result.error ?? "Could not enable notifications.");
 }
 
-export function NotificationSettings() {
+export function NotificationSettings({ guestMode = false }: { guestMode?: boolean }) {
   const [state, setState] = useState<NoticeState>("checking");
   const [enabled, setEnabled] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
@@ -118,7 +118,9 @@ export function NotificationSettings() {
       ? "Push notifications are not configured yet."
       : permission === "denied"
         ? "Notifications are blocked in your browser settings."
-        : "Get alerts when someone joins a roll or it is ready to open.";
+        : guestMode
+          ? "Get a nudge 5 minutes before the roll opens, then another when it is ready."
+          : "Get alerts when someone joins a roll or it is ready to open.";
 
   return <section className="flow-panel mt-5 border border-white/10 bg-[#191714] p-6 sm:p-8">
     <div className="flex items-start gap-4">
@@ -127,7 +129,7 @@ export function NotificationSettings() {
       </span>
       <div className="min-w-0 flex-1">
         <p className="eyebrow">PUSH NOTIFICATIONS</p>
-        <h2 className="mt-2 font-display text-2xl">Get roll updates.</h2>
+        <h2 className="mt-2 font-display text-2xl">{guestMode ? "Know when it’s time to look." : "Get roll updates."}</h2>
         <p className="mt-2 text-sm leading-6 text-[#918a7e]">{unavailableText}</p>
         {message && <p role="status" className="mt-3 text-xs leading-5 text-[#c7bfb1]">{message}</p>}
         {permission === "denied" && <p className="mt-2 text-xs leading-5 text-[#c7bfb1]">Change the site’s notification permission in your browser settings, then come back here.</p>}

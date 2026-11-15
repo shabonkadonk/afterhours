@@ -33,8 +33,7 @@ async function getSignedInAccount() {
   const supabase = await getSupabaseServerClient();
   if (!supabase) return { response: NextResponse.json({ error: "Accounts are not configured." }, { status: 503 }) } as const;
   const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) return { response: NextResponse.json({ error: "Sign in to manage notifications." }, { status: 401 }) } as const;
-  if (user.is_anonymous) return { response: NextResponse.json({ error: "Sign in to an account to enable notifications." }, { status: 403 }) } as const;
+  if (error || !user) return { response: NextResponse.json({ error: "Join a roll before enabling notifications." }, { status: 401 }) } as const;
   return { user } as const;
 }
 

@@ -5,11 +5,11 @@ Afterhours is a shared camera roll for nights out. A host creates a roll and inv
 ## Features
 
 - Create rolls with a title, end time, photo limit, and visual theme.
-- Invite contributors with a link, QR code, or join code. Guests can join with an anonymous browser session.
+- Invite contributors with a link, QR code, or join code. Hosts get the full app; guests claim a roll-specific disposable camera with a share based on the roll limit and group size, then return to the shared gallery after reveal.
 - Capture photos in the installed app with the native camera, including an optional torch/flash control in Safari and other browsers when the active camera supports it. Upload photos with captions and local Canvas based camera looks. Y2K recreates warm direct flash, cool room shadows, CCD noise, and subtle color fringing; Disposable adds seeded film grain, occasional light leaks, subtle halation and vignetting, and an optional capture-date stamp.
 - Keep photos private in Supabase Storage until the roll is revealed.
 - Browse revealed galleries by contributor or timeline, filter contributors, download individual photos, or export the full roll.
-- Opt in to push notifications when someone joins one of your rolls or a roll is revealed.
+- Let guests opt in from their anonymous session to a randomized five-minute reminder and reveal alert. Hosts can also get alerts when people join their rolls.
 - Retain cloud rolls for 30 days after reveal, with a 7 day renewal window for the host before scheduled deletion.
 - Try demo mode without a backend. Demo rolls are stored only in the current browser and are not shared.
 - Preview Afterhours Awards on revealed rolls. Sample mode is enabled by default; live processing remains disabled until provider, privacy, license, and age requirements have been confirmed.
@@ -67,11 +67,13 @@ Use the same generated value for `CRON_SECRET` in local configuration and Vercel
 4. Apply every SQL migration in [`supabase/migrations`](supabase/migrations) in filename order, using the Supabase SQL Editor or the Supabase CLI. Migrations are incremental; do not skip earlier files on a new project.
 5. Restart the development server after changing `.env.local`.
 
+Guests claim an invite into a focused disposable camera with a frame allowance based on the roll limit and current group size. For example, a 24-photo roll with six people gives each guest camera four frames; the roll-wide limit still caps the total when a division leaves a remainder. If more people join later, the allowance is recalculated and any already-saved photos stay; someone who is now over their share cannot add more. The camera link persists in the installed app and turns into the shared gallery after reveal. Guests can enable push from the camera while signed in anonymously. To get the five-minute reminder while the app is closed, configure the minute scheduler described in [`docs/vercel-deployment.md`](docs/vercel-deployment.md).
+
 Guests can open **Account** and link an email to turn the current guest session into a permanent account while keeping its existing roll memberships. When email confirmation is enabled, confirm the address first, then set a password from **Account**. Google linking keeps the guest session when manual identity linking is enabled in Supabase; signing in to an existing account switches sessions.
 
 The current Supabase dashboard may label the privileged key **Secret key** (`sb_secret_...`); older projects may show the legacy `service_role` key. Put that server-only key in `SUPABASE_SERVICE_ROLE_KEY`; the variable name is retained for this project's server configuration. Do not use the publishable key in its place.
 
-Push notifications use Web Push with one stable VAPID key pair. Generate it with `npx web-push generate-vapid-keys`, put the public key in `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, the private key in `VAPID_PRIVATE_KEY`, and set `VAPID_SUBJECT` to a `mailto:` address or HTTPS URL. Keep the private key server-only and use the same values in local and deployment environments. Apply all migrations in filename order, including the push subscription and roll-join notification migrations, before enabling notifications. Signed-in members can opt in or out from **Account**. Subscribed members receive an alert when someone newly joins their roll and when the roll is revealed; the person who just joined does not receive the join alert. On iPhone, install Afterhours to the Home Screen before enabling push notifications.
+Push notifications use Web Push with one stable VAPID key pair. Generate it with `npx web-push generate-vapid-keys`, put the public key in `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, the private key in `VAPID_PRIVATE_KEY`, and set `VAPID_SUBJECT` to a `mailto:` address or HTTPS URL. Keep the private key server-only and use the same values in local and deployment environments. Apply all migrations in filename order, including the push, join-alert, and reveal-notification migrations. Guests opt in from their disposable camera; registered members can manage notifications from **Account**. Subscribed members receive a randomized five-minute reminder and reveal alert, plus an alert when someone newly joins their roll. On iPhone, install Afterhours to the Home Screen before enabling push notifications.
 
 ### Start the app
 
@@ -101,6 +103,7 @@ The offline screen is a fallback when a navigation request cannot reach the serv
 | `/join` | Join with a code |
 | `/join/[token]` | Preview and join from an invitation |
 | `/rolls/[id]` | Roll details and contribution entry |
+| `/camera/[id]` | Guest disposable camera while a roll is active |
 | `/capture/[id]` | Add photos |
 | `/rolls/[id]/reveal` | Revealed gallery |
 | `/login` | Sign in or create an account |

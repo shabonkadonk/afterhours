@@ -45,10 +45,10 @@ export default function InstallPageClient() {
       {hasInvite ? <p className="inline-flex min-h-10 items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378]"><ArrowLeft size={13}/> YOUR INVITATION</p> : <Link href="/" className="inline-flex min-h-10 items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]"><ArrowLeft size={13}/> AFTERHOURS HOME</Link>}
       <section className="mt-6 border border-white/10 bg-[#191714] p-5 sm:p-9">
         <span className="flex h-10 w-10 items-center justify-center border border-[#a33a32]/50 text-[#c55448]"><Download size={18}/></span>
-        <p className="eyebrow mt-6">TAKE THE CAMERA ROLL WITH YOU</p>
-        <h1 className="mt-2 font-display text-4xl tracking-[-.045em] sm:text-5xl">Install Afterhours.</h1>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-[#918a7e]">Add Afterhours to your Home Screen for a full-screen app feel. Your rolls and photos still use the same account and privacy settings as the website.</p>
-        {hasInvite && <p className="mt-4 border-l border-[#a33a32]/60 pl-3 text-sm leading-6 text-[#d5cfc3]">After installing, open Afterhours from your Home Screen. It will take you straight to this invitation so you can enter your name and join.</p>}
+        <p className="eyebrow mt-6">{hasInvite ? "YOUR CAMERA IS WAITING" : "TAKE THE CAMERA ROLL WITH YOU"}</p>
+        <h1 className="mt-2 font-display text-4xl tracking-[-.045em] sm:text-5xl">{hasInvite ? "Claim your disposable camera." : "Install Afterhours."}</h1>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-[#918a7e]">{hasInvite ? "Add Afterhours to your Home Screen for a camera made just for this roll. No account or email needed." : "Add Afterhours to your Home Screen for a full-screen app feel. Your rolls and photos still use the same account and privacy settings as the website."}</p>
+        {hasInvite && <p className="mt-4 border-l border-[#a33a32]/60 pl-3 text-sm leading-6 text-[#d5cfc3]">After installing, open Afterhours from your Home Screen to claim your camera. Keep it around: it’ll take you back to the camera now and the shared gallery after reveal.</p>}
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
           <section className="border border-white/10 bg-[#1e1b17] p-5">
             <h2 className="flex items-center gap-2 font-display text-2xl"><Smartphone size={17} className="text-[#bc574b]"/> iPhone or iPad</h2>

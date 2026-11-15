@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Camera, House, KeyRound, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { useApp } from "@/components/app-provider";
 import { useInstalledApp } from "@/components/use-installed-app";
+import { LAST_GUEST_ROLL_KEY } from "@/lib/guest-camera-session";
 
 type OrientationLock = ScreenOrientation & {
   lock?: (orientation: "portrait-primary") => Promise<void>;
@@ -35,6 +37,7 @@ function AppNavigation() {
         : []),
   ];
 
+  if (guest) return null;
   return <nav className="installed-nav" aria-label="App navigation" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
     {items.map(({ href, label, icon: Icon, active }) => <Link key={href} href={href} aria-current={active ? "page" : undefined} className={`installed-nav__item${active ? " is-active" : ""}`}>
       <Icon size={19} strokeWidth={1.7}/><span>{label}</span>
@@ -45,10 +48,41 @@ function AppNavigation() {
 export function InstalledAppShell({ children }: { children: React.ReactNode }) {
   const installed = useInstalledApp();
   const path = usePathname();
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const { rolls, ready } = useApp();
+  const guest = Boolean(user?.is_anonymous);
   const [mobileDevice, setMobileDevice] = useState<boolean | null>(null);
   const [online, setOnline] = useState(true);
 
   useEffect(() => { setMobileDevice(isMobileDevice()); }, []);
+
+  useEffect(() => {
+    if (!guest || authLoading || !ready) return;
+    if (path.startsWith("/join") || path.startsWith("/account") || path.startsWith("/login") || path.startsWith("/camera/")) return;
+
+    const rollRoute = /^\/rolls\/([^/]+)(?:\/reveal)?/.exec(path);
+    const captureRoute = /^\/capture\/([^/]+)/.exec(path);
+    const requestedId = rollRoute?.[1] ?? captureRoute?.[1];
+    if (requestedId) {
+      const requested = rolls.find((roll) => roll.id === requestedId);
+      if (requested) {
+        router.replace(requested.status === "revealed"
+          ? `/rolls/${requested.id}/reveal`
+          : `/camera/${requested.id}`);
+        return;
+      }
+    }
+
+    const shouldOpenGuestRoll = path === "/" || path.startsWith("/dashboard") || path.startsWith("/rolls/new");
+    if (!shouldOpenGuestRoll) return;
+    let preferredId = "";
+    try { preferredId = window.localStorage.getItem(LAST_GUEST_ROLL_KEY) ?? ""; } catch { /* Local storage is optional. */ }
+    const preferred = rolls.find((roll) => roll.id === preferredId);
+    const destination = preferred ?? rolls.find((roll) => roll.status === "active") ?? rolls.find((roll) => roll.status === "revealed");
+    if (destination) router.replace(destination.status === "revealed" ? `/rolls/${destination.id}/reveal` : `/camera/${destination.id}`);
+    else router.replace("/join");
+  }, [authLoading, guest, path, ready, rolls, router]);
 
   const needsInstallation = installed === false && mobileDevice === true && path !== "/install";
   useEffect(() => {
@@ -94,6 +128,7 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
 
   if (needsInstallation) return null;
   if (installed !== true) return <>{children}</>;
+  if (guest) return <div className="installed-app installed-app--guest">{children}</div>;
   return <div className={`installed-app${path === "/rolls/new" ? " installed-app--no-scroll" : ""}`}>
     <header className="installed-topbar">
       <Link href="/" className="installed-topbar__brand" aria-label="Afterhours home"><House size={17} strokeWidth={1.5}/><span>AFTERHOURS</span></Link>
