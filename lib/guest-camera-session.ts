@@ -1,4 +1,15 @@
 export const LAST_GUEST_ROLL_KEY = "afterhours-guest-last-roll";
+const GUEST_CAMERA_SETUP_KEY = "afterhours-guest-camera-setup-complete";
+
+export function hasGuestCameraSetup() {
+  try { return window.localStorage.getItem(GUEST_CAMERA_SETUP_KEY) === "1"; }
+  catch { return false; }
+}
+
+export function rememberGuestCameraSetup() {
+  try { window.localStorage.setItem(GUEST_CAMERA_SETUP_KEY, "1"); }
+  catch { /* Camera setup can continue when local storage is unavailable. */ }
+}
 
 export function guestCameraFrameLimit(rollPhotoLimit: number, participantCount: number) {
   return Math.max(1, Math.ceil(rollPhotoLimit / Math.max(1, participantCount)));

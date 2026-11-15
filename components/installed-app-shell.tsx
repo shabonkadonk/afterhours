@@ -52,6 +52,7 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const { rolls, ready } = useApp();
   const guest = Boolean(user?.is_anonymous);
+  const immersiveCamera = guest && path.startsWith("/camera/");
   const [mobileDevice, setMobileDevice] = useState<boolean | null>(null);
   const [online, setOnline] = useState(true);
 
@@ -102,7 +103,8 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.add("is-installed-app");
     try {
       const orientation = screen.orientation as OrientationLock | undefined;
-      void orientation?.lock?.("portrait-primary").catch(() => undefined);
+      if (immersiveCamera) orientation?.unlock?.();
+      else void orientation?.lock?.("portrait-primary").catch(() => undefined);
     } catch {
       // Some installed browsers expose orientation data but do not allow a lock.
     }
@@ -110,7 +112,7 @@ export function InstalledAppShell({ children }: { children: React.ReactNode }) {
       document.documentElement.classList.remove("is-installed-app");
       (screen.orientation as OrientationLock | undefined)?.unlock?.();
     };
-  }, [installed]);
+  }, [immersiveCamera, installed]);
 
   useEffect(() => {
     if (!installed || !("serviceWorker" in navigator)) return;

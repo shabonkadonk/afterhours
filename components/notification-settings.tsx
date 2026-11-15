@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, BellOff, LoaderCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type NoticeState = "checking" | "supported" | "unsupported" | "unavailable";
 
@@ -21,12 +21,30 @@ async function postSubscription(subscription: PushSubscription) {
   if (!response.ok) throw new Error(result.error ?? "Could not enable notifications.");
 }
 
-export function NotificationSettings({ guestMode = false }: { guestMode?: boolean }) {
+export function NotificationSettings({
+  guestMode = false,
+  setupMode = false,
+  onSetupComplete,
+}: {
+  guestMode?: boolean;
+  setupMode?: boolean;
+  onSetupComplete?: () => void;
+}) {
   const [state, setState] = useState<NoticeState>("checking");
   const [enabled, setEnabled] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const setupComplete = useRef(false);
+  const onSetupCompleteRef = useRef(onSetupComplete);
+
+  useEffect(() => { onSetupCompleteRef.current = onSetupComplete; }, [onSetupComplete]);
+
+  const finishSetup = useCallback(() => {
+    if (setupComplete.current) return;
+    setupComplete.current = true;
+    onSetupCompleteRef.current?.();
+  }, []);
 
   useEffect(() => {
     const supported = "serviceWorker" in navigator
@@ -59,6 +77,11 @@ export function NotificationSettings({ guestMode = false }: { guestMode?: boolea
       .finally(() => setState("supported"));
   }, []);
 
+  useEffect(() => {
+    if (!setupMode || state === "checking") return;
+    if (enabled || state === "unsupported" || state === "unavailable" || permission === "denied") finishSetup();
+  }, [enabled, finishSetup, permission, setupMode, state]);
+
   async function enable() {
     setBusy(true);
     setMessage("");
@@ -68,6 +91,7 @@ export function NotificationSettings({ guestMode = false }: { guestMode?: boolea
         : Notification.permission;
       setPermission(currentPermission);
       if (currentPermission !== "granted") {
+        if (setupMode && currentPermission === "denied") return;
         throw new Error("Allow notifications in your browser settings to turn them on.");
       }
 
@@ -121,6 +145,20 @@ export function NotificationSettings({ guestMode = false }: { guestMode?: boolea
         : guestMode
           ? "Get a nudge 5 minutes before the roll opens, then another when it is ready."
           : "Get alerts when someone joins a roll or it is ready to open.";
+
+  if (setupMode) return <section className="guest-camera__permission-card" aria-labelledby="guest-notification-title">
+    <p className="guest-camera__permission-kicker">ONE LAST THING</p>
+    <h2 id="guest-notification-title">Want a heads-up when it opens?</h2>
+    <p>{state === "supported" ? "Get a quick reminder before the roll opens, then a note when the photos are ready." : unavailableText}</p>
+    {message && <p className="guest-camera__permission-message" role="status">{message}</p>}
+    {state === "checking" ? <p className="guest-camera__checking" role="status"><LoaderCircle size={14} className="animate-spin"/> Checking notifications…</p> : state === "supported" && permission !== "denied" && !enabled ? <button type="button" onClick={() => void enable()} disabled={busy} className="guest-camera__permission-primary">
+      {busy ? <LoaderCircle size={16} className="animate-spin"/> : <Bell size={16}/>}
+      {busy ? "Setting it up…" : "Turn on notifications"}
+    </button> : null}
+    {state !== "checking" && <button type="button" onClick={finishSetup} className="guest-camera__permission-skip">
+      {state === "supported" && permission === "granted" && !enabled ? "Open camera without alerts" : "Open camera"}
+    </button>}
+  </section>;
 
   return <section className="flow-panel mt-5 border border-white/10 bg-[#191714] p-6 sm:p-8">
     <div className="flex items-start gap-4">

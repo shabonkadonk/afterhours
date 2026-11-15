@@ -38,10 +38,10 @@ export function SiteHeader() {
     <header className="site-header relative z-20 border-b border-white/10 bg-[#141311]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
         <div className="site-header__inner mx-auto flex h-[66px] max-w-[1440px] items-center justify-between px-5 sm:h-[72px] sm:px-10 lg:px-16">
         {showBrowserNavigation ? <Link href="/" className="group flex items-center gap-2.5" aria-label="Afterhours home">
-          <span className="flex h-8 w-8 items-center justify-center border border-[#a33a32] text-[#c55448]"><Disc3 size={17} strokeWidth={1.4}/></span>
+          <span className="brand-mark flex h-8 w-8 items-center justify-center"><Disc3 size={17} strokeWidth={1.4}/></span>
           <span className="text-[12px] font-semibold tracking-[.2em]">AFTERHOURS</span>
         </Link> : <div className="group flex items-center gap-2.5" aria-label="Afterhours">
-          <span className="flex h-8 w-8 items-center justify-center border border-[#a33a32] text-[#c55448]"><Disc3 size={17} strokeWidth={1.4}/></span>
+          <span className="brand-mark flex h-8 w-8 items-center justify-center"><Disc3 size={17} strokeWidth={1.4}/></span>
           <span className="text-[12px] font-semibold tracking-[.2em]">AFTERHOURS</span>
         </div>}
         <div className="site-header__desktop-note" aria-hidden="true"><span>SHARED PHOTO ROLLS</span><span>NO FEED. JUST FRAMES.</span></div>

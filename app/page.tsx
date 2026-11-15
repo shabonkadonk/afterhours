@@ -13,12 +13,12 @@ function BrowserHome() {
   return (
     <main className="browser-home overflow-hidden pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <section className="browser-home__hero relative mx-auto max-w-[1440px] px-4 pb-8 pt-6 sm:px-10 sm:pb-16 sm:pt-9 lg:px-16 lg:pb-20 lg:pt-14">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_75%_43%,rgba(117,44,37,.17),transparent_41%)]" />
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_18%_40%,rgba(163,58,50,.14),transparent_39%),radial-gradient(ellipse_at_86%_32%,rgba(54,93,145,.2),transparent_43%)]" />
         <div className="grid items-center gap-8 lg:min-h-[74svh] lg:gap-10 lg:grid-cols-[1.05fr_.95fr]">
           <div className="relative z-10 max-w-[700px]">
             <p className="eyebrow rise-in mb-5 flex items-center gap-3 sm:mb-7"><span className="h-px w-7 bg-[#a33a32]" />A shared camera roll for nights out</p>
             <h1 className="font-display rise-in rise-in--1 text-[clamp(4.5rem,10vw,8.5rem)] leading-[.82] tracking-[-.065em] text-[#eee9de]">
-              Keep<br /><span className="italic text-[#b54b40]">the night.</span>
+              Keep<br /><span className="night-gradient-text italic">the night.</span>
             </h1>
             <p className="rise-in rise-in--2 mt-6 max-w-[430px] text-[15px] leading-7 text-[#a6a095] sm:mt-8 sm:text-base">Invite your people to add photos through the night. Open the roll together tomorrow and see it from every angle.</p>
             <div className="rise-in rise-in--3 mt-6 flex flex-col items-stretch gap-1 sm:mt-8 sm:flex-row sm:items-center sm:gap-4">
@@ -34,7 +34,7 @@ function BrowserHome() {
             <div className="home-print rise-in rise-in--2 relative mt-7 rotate-[-3deg] border border-white/10 bg-[#211e19] p-1.5 pb-8 shadow-2xl sm:mt-12 sm:p-3 sm:pb-11">
               <div className="photo-frame aspect-[.82]"><img src={moments[0].src} alt={moments[0].alt} loading="eager" fetchPriority="high" decoding="async" sizes="(max-width: 640px) 52vw, 300px" /></div>
               <span className="absolute bottom-2.5 left-2.5 font-mono text-[7px] tracking-[.11em] text-[#b9b2a6] sm:bottom-4 sm:left-4 sm:text-[9px]">{moments[0].label}</span>
-              <div className="absolute -right-3 -top-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-[#a33a32] shadow-xl sm:-right-5 sm:-top-5 sm:h-14 sm:w-14"><Camera size={19} strokeWidth={1.5} /></div>
+              <div className="brand-mark absolute -right-3 -top-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 shadow-xl sm:-right-5 sm:-top-5 sm:h-14 sm:w-14"><Camera size={19} strokeWidth={1.5} /></div>
             </div>
             <div className="relative -mt-8 space-y-2.5 sm:-mt-16 sm:space-y-5">
               <div className="home-print rise-in rise-in--3 relative rotate-[4deg] border border-white/10 bg-[#211e19] p-1.5 pb-7 shadow-2xl sm:p-3 sm:pb-10">

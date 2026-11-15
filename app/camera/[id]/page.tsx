@@ -2,27 +2,50 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Camera, Check, LoaderCircle, RotateCcw, Upload } from "lucide-react";
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Bell, Camera, Check, Flashlight, ImagePlus, LoaderCircle } from "lucide-react";
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { NotificationSettings } from "@/components/notification-settings";
 import { useApp } from "@/components/app-provider";
 import { useAuth } from "@/components/auth-provider";
-import { getPhotoSeed, PHOTO_FILTER_VERSION, processPhotoFile, createPhotoThumbnail } from "@/lib/photo-processing";
-import { guestCameraFrameLimit } from "@/lib/guest-camera-session";
+import { createPhotoThumbnail, getPhotoSeed, PHOTO_FILTER_VERSION, processPhotoFile, type PhotoFilterId } from "@/lib/photo-processing";
+import { guestCameraFrameLimit, hasGuestCameraSetup, rememberGuestCameraSetup } from "@/lib/guest-camera-session";
 import type { Roll } from "@/lib/types";
+
+const CAMERA_FILTERS: Array<{ id: PhotoFilterId; label: string }> = [
+  { id: "original", label: "Original" },
+  { id: "disposable", label: "Dispo" },
+  { id: "flash", label: "Flash look" },
+  { id: "y2k", label: "Y2K" },
+  { id: "rio", label: "Rio" },
+  { id: "mono", label: "Mono" },
+];
+
+async function requestRearCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't open a live camera. Try opening the invite in Safari or Chrome.");
+  return navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: { ideal: "environment" } },
+  });
+}
+
+type CameraStage = "checking" | "camera-permission" | "notifications" | "camera";
 
 function GuestCamera({ roll }: { roll: Roll }) {
   const { configured, user } = useAuth();
   const { addPhotos } = useApp();
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [stage, setStage] = useState<CameraStage>("checking");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [captured, setCaptured] = useState<File | null>(null);
   const [capturedPreview, setCapturedPreview] = useState("");
   const [cameraError, setCameraError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [openingCamera, setOpeningCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(0);
+  const [selectedFilter, setSelectedFilter] = useState<PhotoFilterId>("disposable");
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchAvailable, setTorchAvailable] = useState<boolean | null>(null);
   const sharedRemaining = Math.max(0, roll.photoLimit - roll.photos.length);
   const myFrames = user ? roll.photos.filter((photo) => photo.uploadedBy === user.id).length : 0;
   const participantCount = Math.max(1, roll.participants.length);
@@ -30,10 +53,56 @@ function GuestCamera({ roll }: { roll: Roll }) {
   const remaining = Math.min(sharedRemaining, Math.max(0, personalLimit - myFrames));
 
   useEffect(() => {
-    if (!videoRef.current || !stream) return;
-    videoRef.current.srcObject = stream;
-    void videoRef.current.play().catch(() => setCameraError("The camera preview could not start. Try choosing a photo instead."));
+    document.documentElement.classList.add("is-guest-camera");
+    return () => document.documentElement.classList.remove("is-guest-camera");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!hasGuestCameraSetup()) {
+      setStage("camera-permission");
+      return () => { cancelled = true; };
+    }
+
+    void requestRearCamera().then((nextStream) => {
+      if (cancelled) {
+        nextStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      setStream(nextStream);
+      setStage("camera");
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setCameraError(error instanceof Error ? error.message : "Couldn't open the camera. Check your browser settings and try again.");
+      setStage("camera-permission");
+    });
+    return () => { cancelled = true; };
+  }, [roll.id]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    void video.play().catch(() => setCameraError("The camera preview couldn't start. Try opening the camera again."));
   }, [stream]);
+
+  useEffect(() => {
+    const track = stream?.getVideoTracks()[0];
+    if (!track) {
+      setTorchAvailable(null);
+      setTorchOn(false);
+      return;
+    }
+    try {
+      const capabilities = track.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+      const supported = navigator.mediaDevices.getSupportedConstraints?.() as (MediaTrackSupportedConstraints & { torch?: boolean }) | undefined;
+      setTorchAvailable(capabilities?.torch === true || supported?.torch === true);
+    } catch {
+      setTorchAvailable(null);
+    }
+  }, [stream]);
+
+  useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
 
   useEffect(() => {
     if (!captured) {
@@ -45,74 +114,51 @@ function GuestCamera({ roll }: { roll: Roll }) {
     return () => URL.revokeObjectURL(url);
   }, [captured]);
 
-  useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
-
   async function openCamera() {
-    setCaptured(null);
+    if (openingCamera) return;
+    setOpeningCamera(true);
     setCameraError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Camera access needs a supported browser. Choose a photo instead.");
-      return;
-    }
     try {
+      const nextStream = await requestRearCamera();
       stream?.getTracks().forEach((track) => track.stop());
-      const nextStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
       setStream(nextStream);
+      setStage("notifications");
     } catch (error) {
-      const name = error instanceof Error ? error.name : "";
-      setCameraError(name === "NotAllowedError" ? "Allow camera access in your browser settings, then try again." : "Couldn’t open the camera. Choose a photo instead.");
+      setCameraError(error instanceof Error ? error.message : "Couldn't open the camera. Check your browser settings and try again.");
+    } finally {
+      setOpeningCamera(false);
     }
   }
 
-  function takePhoto() {
-    const video = videoRef.current;
-    if (!video?.videoWidth || !video.videoHeight || remaining <= 0) return;
-    const canvas = document.createElement("canvas");
-    const scale = Math.min(1, 3200 / Math.max(video.videoWidth, video.videoHeight));
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    const context = canvas.getContext("2d");
-    if (!context) {
-      setCameraError("Couldn’t capture this frame. Try again.");
-      return;
-    }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        setCameraError("Couldn’t save this frame. Try again.");
-        return;
-      }
-      const timestamp = Date.now();
-      setCaptured(new File([blob], `afterhours-${timestamp}.jpg`, { type: "image/jpeg", lastModified: timestamp }));
-      stream?.getTracks().forEach((track) => track.stop());
-      setStream(null);
+  const finishSetup = useCallback(() => {
+    rememberGuestCameraSetup();
+    setStage("camera");
+  }, []);
+
+  async function toggleTorch() {
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    const nextTorchState = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: nextTorchState } as MediaTrackConstraintSet] });
+      setTorchAvailable(true);
+      setTorchOn(nextTorchState);
       setCameraError("");
-      setSaveError("");
-    }, "image/jpeg", 0.94);
-  }
-
-  function choosePhoto(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) {
-      setSaveError("Choose an image under 15 MB.");
-      return;
+    } catch {
+      setTorchOn(false);
+      setTorchAvailable(false);
+      setCameraError("This camera doesn't expose a browser flash control. You can still take the photo.");
     }
-    setCaptured(file);
-    setSaveError("");
-    stream?.getTracks().forEach((track) => track.stop());
-    setStream(null);
   }
 
-  async function saveFrame() {
-    if (!captured || busy) return;
+  async function saveFrame(file: File) {
+    if (busy) return;
     setBusy(true);
     setSaveError("");
     try {
-      const seed = await getPhotoSeed(captured);
-      const image = await processPhotoFile(captured, {
-        filterId: "disposable",
+      const seed = await getPhotoSeed(file);
+      const image = await processPhotoFile(file, {
+        filterId: selectedFilter,
         seed,
         maxDimension: 3200,
         maxPixels: 8_000_000,
@@ -134,41 +180,114 @@ function GuestCamera({ roll }: { roll: Roll }) {
         reader.readAsDataURL(thumbnail);
       });
       try {
-        await addPhotos(roll.id, [{ src, thumbnailSrc, caption: "", filter: "Disposable", filterVersion: PHOTO_FILTER_VERSION }]);
+        const filterLabel = CAMERA_FILTERS.find((filter) => filter.id === selectedFilter)?.label ?? "Dispo";
+        await addPhotos(roll.id, [{ src, thumbnailSrc, caption: "", filter: filterLabel, filterVersion: PHOTO_FILTER_VERSION }]);
       } finally {
         if (src.startsWith("blob:")) URL.revokeObjectURL(src);
         if (thumbnailSrc.startsWith("blob:")) URL.revokeObjectURL(thumbnailSrc);
       }
       setCaptured(null);
       setSaved((current) => current + 1);
-      window.setTimeout(() => setSaved(0), 2800);
+      window.setTimeout(() => setSaved(0), 2400);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Couldn’t save that frame. Try again.");
+      setSaveError(error instanceof Error ? error.message : "Couldn't save that frame. Try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  return <main className="mx-auto flex min-h-screen w-full max-w-[560px] flex-col px-5 pb-8 pt-[max(1.25rem,env(safe-area-inset-top))]">
-    <header className="flex items-center justify-between border-b border-white/10 pb-4">
-      <Link href="/" className="font-mono text-[10px] tracking-[.18em] text-[#a9a194]">AFTERHOURS</Link>
-      <span className="max-w-[58%] truncate font-mono text-[9px] tracking-[.12em] text-[#777168]">{roll.name.toUpperCase()}</span>
+  function takePhoto() {
+    const video = videoRef.current;
+    if (!video?.videoWidth || !video.videoHeight || remaining <= 0 || busy) return;
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 3200 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setCameraError("Couldn't capture this frame. Try again.");
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setCameraError("Couldn't save this frame. Try again.");
+        return;
+      }
+      const timestamp = Date.now();
+      const file = new File([blob], `afterhours-${timestamp}.jpg`, { type: "image/jpeg", lastModified: timestamp });
+      setCaptured(file);
+      setCameraError("");
+      void saveFrame(file);
+    }, "image/jpeg", 0.94);
+  }
+
+  function choosePhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) {
+      setSaveError("Choose an image under 15 MB.");
+      return;
+    }
+    setCaptured(file);
+    setSaveError("");
+    void saveFrame(file);
+  }
+
+  const frameLabel = remaining === 0
+    ? sharedRemaining === 0 ? "ROLL FULL" : "NO FRAMES LEFT"
+    : `${remaining} ${remaining === 1 ? "FRAME" : "FRAMES"} LEFT`;
+
+  return <main className="guest-camera" data-filter={selectedFilter}>
+    <video ref={videoRef} autoPlay playsInline muted className={`guest-camera__video${captured ? " is-covered" : ""}`} aria-label="Live camera viewfinder"/>
+    {captured && <img src={capturedPreview} alt="Just captured" className="guest-camera__captured"/>}
+    {!stream && stage === "camera" && <div className="guest-camera__no-feed"><Camera size={26}/><p>Camera paused</p><button type="button" onClick={() => void openCamera()}>Open camera</button></div>}
+
+    <header className="guest-camera__topbar">
+      <Link href="/join" className="guest-camera__icon-button" aria-label="Open another invite"><ArrowLeft size={19}/></Link>
+      <div className="guest-camera__roll-name"><span>{roll.name}</span><small>{frameLabel}</small></div>
+      <div className="guest-camera__top-actions">
+        <button type="button" onClick={() => setStage("notifications")} className="guest-camera__icon-button" aria-label="Notification settings"><Bell size={17}/></button>
+        <button type="button" onClick={() => void toggleTorch()} disabled={!stream} aria-pressed={torchOn} className={`guest-camera__icon-button${torchOn ? " is-on" : ""}`} aria-label={torchOn ? "Turn flash off" : "Turn flash on"} title={torchAvailable === false ? "Try flash; availability depends on this camera" : "Flash / torch"}><Flashlight size={18}/></button>
+      </div>
     </header>
-    <section className="my-6 flex items-end justify-between gap-4">
-      <div><p className="eyebrow">YOUR DISPOSABLE CAMERA</p><h1 className="mt-2 font-display text-4xl leading-none tracking-[-.04em]">Use it wisely.</h1><p className="mt-2 text-sm text-[#918a7e]">Your share is {personalLimit} {personalLimit === 1 ? "frame" : "frames"}, split across {participantCount} {participantCount === 1 ? "person" : "people"}. Photos stay hidden till the roll opens.</p></div>
-      <div className="shrink-0 border border-white/10 px-3 py-2 text-right"><strong className="block font-mono text-xl text-[#eee9de]">{String(remaining).padStart(2, "0")}</strong><span className="font-mono text-[8px] tracking-[.12em] text-[#827b70]">FRAMES LEFT</span></div>
-    </section>
-    <section className="relative flex min-h-[min(58svh,520px)] flex-1 items-center justify-center overflow-hidden border border-white/10 bg-[#201d19]">
-      {captured ? <img src={capturedPreview} alt="Your frame ready to save" className="absolute inset-0 h-full w-full object-contain"/> : stream ? <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover"/> : <div className="px-8 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center border border-[#a33a32]/40 text-[#c55448]"><Camera size={22}/></span><p className="mt-5 font-display text-2xl">One night. A few frames.</p><p className="mt-2 text-xs leading-5 text-[#827b70]">No previews from anyone else until the roll opens.</p></div>}
-      {stream && <span className="absolute left-3 top-3 z-[1] border border-white/20 bg-black/45 px-2 py-1 font-mono text-[8px] tracking-[.15em] text-white">FRAME {String(roll.photoLimit - remaining + 1).padStart(2, "0")}</span>}
-    </section>
-    <div className="mt-4 min-h-5 text-center text-xs text-[#b7b0a4]" role="status">{saved ? <span className="inline-flex items-center gap-2"><Check size={14} className="text-[#b3c597]"/> Frame added to the roll.</span> : ""}</div>
-    {(cameraError || saveError) && <p role="alert" className="mt-2 border-l border-[#a33a32]/60 pl-3 text-xs leading-5 text-[#e08478]">{saveError || cameraError}</p>}
-    {remaining > 0 ? <div className="mt-3 grid grid-cols-2 gap-2">
-      {captured ? <><button type="button" onClick={() => void openCamera()} disabled={busy} className="button-secondary min-h-12"><RotateCcw size={15}/> Retake</button><button type="button" onClick={() => void saveFrame()} disabled={busy} className="button-primary min-h-12 disabled:opacity-60">{busy ? <LoaderCircle size={15} className="animate-spin"/> : <Check size={15}/>} {busy ? "Saving…" : "Save this frame"}</button></> : <><button type="button" onClick={stream ? takePhoto : () => void openCamera()} disabled={busy} className="button-primary min-h-12"><Camera size={16}/> {stream ? "Take photo" : "Open camera"}</button><label className="button-secondary relative min-h-12 cursor-pointer"><Upload size={15}/> Choose photo<input ref={inputRef} type="file" accept="image/*" capture="environment" className="absolute inset-0 cursor-pointer opacity-0" onChange={choosePhoto}/></label></>}
-    </div> : <p className="mt-4 border border-white/10 bg-[#1b1916] p-4 text-center text-sm text-[#b3aa9c]">{sharedRemaining === 0 ? "The shared roll is full. We’ll let you know when it opens." : "That’s the last frame on your camera. We’ll let you know when the roll opens."}</p>}
-    {roll.status === "active" && <NotificationSettings guestMode/>}
-    <p className="mt-4 text-center font-mono text-[8px] tracking-[.1em] text-[#6e685e]">{roll.photos.length} OF {roll.photoLimit} SHARED FRAMES USED</p>
+
+    {stage === "camera-permission" && <div className="guest-camera__permission-scrim">
+      <section className="guest-camera__permission-card" aria-labelledby="guest-camera-permission-title">
+        <p className="guest-camera__permission-kicker">YOUR CAMERA, YOUR ROLL</p>
+        <span className="guest-camera__permission-icon"><Camera size={23}/></span>
+        <h1 id="guest-camera-permission-title">Let the night in.</h1>
+        <p>First, allow camera access. Then we’ll ask if you want a reminder when the roll opens.</p>
+        {cameraError && <p className="guest-camera__permission-message" role="alert">{cameraError}</p>}
+        <button type="button" onClick={() => void openCamera()} disabled={openingCamera} className="guest-camera__permission-primary">{openingCamera ? <LoaderCircle size={17} className="animate-spin"/> : <Camera size={17}/>} {openingCamera ? "Opening camera…" : "Allow camera & continue"}</button>
+        {cameraError && <button type="button" onClick={() => setStage("notifications")} className="guest-camera__permission-skip">Use photo picker instead</button>}
+        <p className="guest-camera__permission-footnote">Your photos stay hidden until the host opens the roll.</p>
+      </section>
+    </div>}
+
+    {stage === "notifications" && <div className="guest-camera__permission-scrim">
+      <NotificationSettings guestMode setupMode onSetupComplete={finishSetup}/>
+    </div>}
+
+    {stage === "checking" && <div className="guest-camera__checking-screen"><LoaderCircle size={20} className="animate-spin"/><span>OPENING YOUR CAMERA</span></div>}
+
+    {stage === "camera" && <>
+      <div className="guest-camera__filter-rail" role="group" aria-label="Choose a photo look">
+        {CAMERA_FILTERS.map(({ id, label }) => <button type="button" key={id} data-filter={id} aria-pressed={selectedFilter === id} disabled={busy} onClick={() => setSelectedFilter(id)}>{label}</button>)}
+      </div>
+
+      <footer className="guest-camera__controls">
+        <span className="guest-camera__frame-count" aria-live="polite">{remaining.toString().padStart(2, "0")}<small>LEFT</small></span>
+        <button type="button" className="guest-camera__shutter" aria-label={busy ? "Saving photo" : "Take photo"} disabled={remaining <= 0 || busy || !stream} onClick={takePhoto}>
+          {busy ? <LoaderCircle size={22} className="animate-spin"/> : <span/>}
+        </button>
+        <label className={`guest-camera__import${busy ? " is-busy" : ""}`} aria-label="Choose a photo"><ImagePlus size={21}/><input type="file" accept="image/*" capture="environment" disabled={busy} onChange={choosePhoto}/></label>
+      </footer>
+    </>}
+
+    {saved > 0 && stage === "camera" && <div className="guest-camera__toast" role="status"><Check size={15}/> Frame added</div>}
+    {(cameraError || saveError) && stage === "camera" && <div className="guest-camera__error" role="alert">{saveError || cameraError}{captured && saveError && <button type="button" onClick={() => void saveFrame(captured)} disabled={busy}>Try again</button>}</div>}
   </main>;
 }
 
