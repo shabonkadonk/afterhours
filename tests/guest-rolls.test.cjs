@@ -30,6 +30,11 @@ overrides.set("@/lib/supabase/server", {
   getSupabaseServerClient: async () => activeUser ? { auth: { getUser: async () => ({ data: { user: activeUser }, error: null }) } } : { auth: { getUser: async () => ({ data: { user: null }, error: null }) } },
 });
 overrides.set("@/lib/supabase/admin", { getSupabaseAdminClient: () => activeAdmin });
+overrides.set("@/lib/web-push", {
+  sendRollMemberJoinedPush: async () => {},
+  sendRollPreRevealPush: async () => {},
+  sendRollRevealedPush: async () => {},
+});
 overrides.set("@supabase/ssr", {
   createBrowserClient: (_url, _key, options) => {
     browserClientCalls += 1;

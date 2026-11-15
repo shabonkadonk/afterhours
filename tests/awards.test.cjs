@@ -19,6 +19,8 @@ class TestNextResponse extends Response {
 
 requireOverrides.set("next/server", { NextResponse: TestNextResponse });
 requireOverrides.set("@/lib/supabase/server", { getSupabaseServerClient: async () => activeSupabase });
+requireOverrides.set("@/lib/supabase/admin", { getSupabaseAdminClient: () => null });
+requireOverrides.set("@/lib/web-push", { sendRollAwardsCeremonyPush: async () => {} });
 
 function loadTypeScript(relativePath) {
   const absolutePath = path.resolve(root, relativePath);
@@ -73,7 +75,11 @@ function fakeSupabase({ user, roll, awards = null, photos = [], rpcHandlers = {}
     rpc(name, args) {
       calls.push({ name, args });
       const handler = rpcHandlers[name];
-      return Promise.resolve(handler ? handler(args) : { data: null, error: { message: "Unexpected RPC" } });
+      if (handler) return Promise.resolve(handler(args));
+      if (name === "get_roll_awards_state") {
+        return Promise.resolve({ data: awards ? { ...awards, ceremony_started_at: awards.ceremony_started_at ?? null } : null, error: null });
+      }
+      return Promise.resolve({ data: null, error: { message: "Unexpected RPC" } });
     },
     storage: { from() { throw new Error("Mock tests must not read photo storage."); } },
   };
@@ -86,6 +92,14 @@ function revealedRoll() {
 function postRequest(payload) {
   return new Request(`http://localhost/api/rolls/${rollId}/awards`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+function patchRequest(payload) {
+  return new Request(`http://localhost/api/rolls/${rollId}/awards`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -253,6 +267,27 @@ test("Awards API hides rolls the authenticated member cannot access", async () =
   assert.equal(activeSupabase.calls.length, 0);
 });
 
+test("Awards API only lets the host start the shared ceremony", async () => {
+  const otherUserId = "44444444-4444-4444-8444-444444444444";
+  activeSupabase = fakeSupabase({ user: { id: userId }, roll: { ...revealedRoll(), owner_id: otherUserId } });
+  const guestResponse = await awardsRoute.PATCH(patchRequest({ action: "start-ceremony" }), routeContext());
+  assert.equal(guestResponse.status, 403);
+  assert.equal(activeSupabase.calls.length, 0);
+
+  activeSupabase = fakeSupabase({
+    user: { id: userId },
+    roll: revealedRoll(),
+    rpcHandlers: {
+      start_roll_awards_ceremony: () => ({ data: { started: true, startedAt: "2026-11-15T18:00:00.000Z" }, error: null }),
+    },
+  });
+  const hostResponse = await awardsRoute.PATCH(patchRequest({ action: "start-ceremony" }), routeContext());
+  const hostBody = await hostResponse.json();
+  assert.equal(hostResponse.status, 200);
+  assert.equal(hostBody.ceremonyStartedAt, "2026-11-15T18:00:00.000Z");
+  assert.deepEqual(activeSupabase.calls.map((call) => call.name), ["start_roll_awards_ceremony"]);
+});
+
 test("Awards API returns cached saved ceremonies to roll viewers", async () => {
   const saved = {
     generation_status: "completed",
@@ -293,7 +328,7 @@ test("Awards API persists mock results with selected photo IDs and never calls C
     roll: revealedRoll(),
     photos: [{ id: selectedPhoto, object_path: `u/${rollId}/${selectedPhoto}.jpg` }],
     rpcHandlers: {
-      claim_roll_awards: (args) => ({ data: { state: "claimed", id: "33333333-3333-4333-8333-333333333333" }, error: null }),
+      claim_roll_awards_for_host: (args) => ({ data: { state: "claimed", id: "33333333-3333-4333-8333-333333333333" }, error: null }),
       complete_roll_awards: (args) => ({ data: true, error: null }),
     },
   });
@@ -303,7 +338,7 @@ test("Awards API persists mock results with selected photo IDs and never calls C
   assert.equal(body.provider, "mock");
   assert.equal(body.generationStatus, "completed");
   assert.ok(body.awards.awards.every((award) => award.photoId === selectedPhoto));
-  assert.deepEqual(activeSupabase.calls.map((call) => call.name), ["claim_roll_awards", "complete_roll_awards"]);
+  assert.deepEqual(activeSupabase.calls.map((call) => call.name), ["claim_roll_awards_for_host", "complete_roll_awards"]);
   assert.deepEqual(activeSupabase.calls[0].args.target_photo_ids, [selectedPhoto]);
   assert.equal(activeSupabase.calls[1].args.target_provider, "mock");
 });
@@ -320,7 +355,7 @@ test("Awards API randomly samples available roll photos on the server", async ()
     roll: revealedRoll(),
     photos: availablePhotos,
     rpcHandlers: {
-      claim_roll_awards: (args) => {
+      claim_roll_awards_for_host: (args) => {
         claimedPhotoIds = args.target_photo_ids;
         return { data: { state: "claimed", id: "33333333-3333-4333-8333-333333333333" }, error: null };
       },
@@ -347,7 +382,7 @@ test("Awards API returns a friendly rate-limit error before contacting a provide
     user: { id: userId },
     roll: revealedRoll(),
     photos: [{ id: selectedPhoto, object_path: `u/${rollId}/${selectedPhoto}.jpg` }],
-    rpcHandlers: { claim_roll_awards: () => ({ data: null, error: { message: "AWARDS_RATE_LIMIT" } }) },
+    rpcHandlers: { claim_roll_awards_for_host: () => ({ data: null, error: { message: "AWARDS_RATE_LIMIT" } }) },
   });
   const response = await awardsRoute.POST(postRequest({ photoIds: [selectedPhoto], consent: true }), routeContext());
   const body = await response.json();

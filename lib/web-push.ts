@@ -118,7 +118,7 @@ export async function sendRollAwardsCeremonyPush(admin: SupabaseClient, rollId: 
     "The ceremony's started. There will be allegations.",
     "Your host picked the winners. Come see the evidence.",
   ];
-  await sendPushToUsers(userIds.filter((userId) => userId !== roll.owner_id), {
+  await sendPushToUsers(admin, userIds.filter((userId) => userId !== roll.owner_id), {
     title: roll.name || "The awards are in",
     body: messages[Math.floor(Math.random() * messages.length)],
     url: `/rolls/${rollId}/reveal`,

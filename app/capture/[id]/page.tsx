@@ -367,7 +367,7 @@ export default function CapturePage() {
           <div className="date-imprint-header">
             <div className="date-imprint-heading"><span className="date-imprint-icon"><CalendarClock size={16}/></span><p className="date-imprint-title eyebrow">{filterId==="flash"?"FLASH DATE IMPRINT":filterId==="disposable"?"DISPOSABLE DATE IMPRINT":"Y2K DATE STAMP"}</p></div>
             <button type="button" disabled={saving} aria-pressed={dateStampEnabled} onClick={()=>setDateStampEnabled((current)=>!current)} className={`date-imprint-toggle border font-mono tracking-[.1em] transition disabled:opacity-50 ${dateStampEnabled?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>{dateStampEnabled?"STAMP ON":"STAMP OFF"}</button>
-            <p className="date-imprint-description text-[10px] leading-4 text-[#8c8377]">Keep the photo date, or use its month and day with vintage '06.</p>
+            <p className="date-imprint-description text-[10px] leading-4 text-[#8c8377]">Keep the photo date, or use its month and day with vintage &apos;06.</p>
           </div>
           <div className="date-imprint-settings">
             <div className="date-imprint-option-group"><span className="date-imprint-label">ORIENTATION</span><div className="date-imprint-group-buttons">
