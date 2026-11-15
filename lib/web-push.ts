@@ -104,6 +104,28 @@ export async function sendRollRevealedPush(admin: SupabaseClient, rollId: string
   });
 }
 
+export async function sendRollAwardsCeremonyPush(admin: SupabaseClient, rollId: string) {
+  const userIds = await getRollMemberIds(admin, rollId);
+  if (!userIds) return;
+  const { data: roll, error } = await admin.from("rolls").select("name,owner_id").eq("id", rollId).maybeSingle();
+  if (error || !roll) {
+    if (error) console.error("Could not load the roll for its Awards notification.", error.message);
+    return;
+  }
+  const messages = [
+    "The host has opened the envelopes. Get in here.",
+    "Awards are on. Time to defend your camera roll.",
+    "The ceremony's started. There will be allegations.",
+    "Your host picked the winners. Come see the evidence.",
+  ];
+  await sendPushToUsers(userIds.filter((userId) => userId !== roll.owner_id), {
+    title: roll.name || "The awards are in",
+    body: messages[Math.floor(Math.random() * messages.length)],
+    url: `/rolls/${rollId}/reveal`,
+    tag: `roll-${rollId}-awards-ceremony`,
+  });
+}
+
 export async function sendRollPreRevealPush(admin: SupabaseClient, rollId: string, rollName: string) {
   const userIds = await getRollMemberIds(admin, rollId);
   if (!userIds) return;

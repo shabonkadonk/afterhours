@@ -5,7 +5,9 @@ import { CloudflareAwardsProvider, DEFAULT_CLOUDFLARE_AWARDS_MODEL, MAX_AWARDS_I
 import { generateAwards } from "@/lib/ai/awards-service";
 import { MockAwardsProvider } from "@/lib/ai/mock-provider";
 import { awardsSettingsFromRoll, parseAwardsSettings } from "@/lib/ai/awards-settings";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { sendRollAwardsCeremonyPush } from "@/lib/web-push";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -77,26 +79,28 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const access = await getRequestContext(context);
   if ("response" in access) return access.response;
 
-  const [{ data: saved, error: savedError }] = await Promise.all([
-    access.supabase.from("roll_awards").select("id,generation_status,awards_json,provider,model,error_code,selected_photo_ids,created_at,updated_at")
-      .eq("roll_id", access.id).maybeSingle(),
-  ]);
+  const { data: saved, error: savedError } = await access.supabase.rpc("get_roll_awards_state", { target_roll_id: access.id });
+  if (savedError?.message.includes("get_roll_awards_state")) return jsonError("The shared Awards ceremony migration is missing. Apply the latest Afterhours migration, then refresh.", 503, "ceremony_migration_missing");
   if (savedError) return jsonError("Saved Awards couldn’t be loaded. Try refreshing the page.", 503);
   const mode = providerMode();
   const staleGeneration = saved?.generation_status === "generating" && Date.now() - Date.parse(saved.updated_at) >= 5 * 60_000;
   const status = staleGeneration ? "failed" : saved?.generation_status ?? "none";
+  const isOwner = access.roll.owner_id === access.user.id;
+  const ceremonyStartedAt = saved?.ceremony_started_at ?? null;
   return NextResponse.json({
     generationStatus: status,
-    awards: status === "completed" ? saved?.awards_json : null,
+    awards: status === "completed" && (isOwner || ceremonyStartedAt) ? saved?.awards_json : null,
     provider: status === "completed" ? saved?.provider : null,
     model: status === "completed" ? saved?.model : null,
     errorCode: status === "failed" ? staleGeneration ? "generation_timeout" : saved?.error_code : null,
     providerMode: mode,
     maxPhotos: photoLimit(),
-    canGenerate: mode !== "unavailable" && (status === "none" || status === "failed"),
-    canDelete: access.roll.owner_id === access.user.id && status !== "none",
-    isOwner: access.roll.owner_id === access.user.id,
-    canEditSettings: access.roll.owner_id === access.user.id && (status === "none" || status === "failed"),
+    canGenerate: isOwner && mode !== "unavailable" && (status === "none" || status === "failed"),
+    canStartCeremony: isOwner && status === "completed" && !ceremonyStartedAt,
+    ceremonyStartedAt,
+    canDelete: isOwner && status !== "none",
+    isOwner,
+    canEditSettings: isOwner && (status === "none" || status === "failed"),
     settings: awardsSettingsFromRoll(access.roll as unknown as Record<string, unknown>),
   }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -104,10 +108,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const access = await getRequestContext(context);
   if ("response" in access) return access.response;
-  if (access.roll.owner_id !== access.user.id) return jsonError("Only the roll owner can change its Awards settings.", 403);
+  if (access.roll.owner_id !== access.user.id) return jsonError("Only the roll host can manage its Awards ceremony.", 403);
   let body: unknown;
   try { body = await request.json(); } catch { return jsonError("Those Awards settings are invalid.", 400); }
   const payload = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  if (payload.action === "start-ceremony") {
+    const { data, error } = await access.supabase.rpc("start_roll_awards_ceremony", { target_roll_id: access.id });
+    if (error) {
+      if (error.message.includes("AWARDS_NOT_READY")) return jsonError("Generate the awards before starting the ceremony.", 409, "awards_not_ready");
+      return jsonError("The ceremony could not be started. Refresh the roll and try again.", 503);
+    }
+    const result = data as { started?: boolean; startedAt?: string | null } | null;
+    if (result?.started) {
+      const admin = getSupabaseAdminClient();
+      if (admin) await sendRollAwardsCeremonyPush(admin, access.id);
+    }
+    return NextResponse.json({ ceremonyStartedAt: result?.startedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
+  }
   const settings = parseAwardsSettings(payload.settings);
   if (!settings) return jsonError("Choose valid values for all Awards settings.", 400, "invalid_settings");
 
@@ -127,6 +144,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   const access = await getRequestContext(context);
   if ("response" in access) return access.response;
+  if (access.roll.owner_id !== access.user.id) return jsonError("Only the roll host can generate Awards.", 403, "host_required");
   if (request.headers.get("content-length") && Number(request.headers.get("content-length")) > 16_384) {
     return jsonError("That Awards request is too large.", 413);
   }
@@ -203,7 +221,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const { data: claim, error: claimError } = await access.supabase.rpc("claim_roll_awards", {
+  const { data: claim, error: claimError } = await access.supabase.rpc("claim_roll_awards_for_host", {
     target_roll_id: access.id,
     target_photo_ids: photoIds,
   });
@@ -213,6 +231,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (message.includes("AWARDS_DAILY_LIMIT")) return jsonError("Today’s Awards generation limit has been reached. Try again tomorrow.", 429, "daily_limit");
     if (message.includes("AWARDS_ROLL_UNAVAILABLE")) return jsonError("That roll isn’t available for Awards.", 404);
     if (message.includes("AWARDS_ROLL_NOT_REVEALED")) return jsonError("Awards are available after the roll is revealed.", 409);
+    if (message.includes("AWARDS_HOST_REQUIRED")) return jsonError("Only the roll host can generate Awards.", 403, "host_required");
     if (message.includes("AWARDS_TOO_MANY_PHOTOS")) return jsonError(`Choose up to ${maxPhotos} photos for one ceremony.`, 400, "too_many_photos");
     return jsonError("Awards couldn’t be started. Refresh the roll and try again.", 503);
   }

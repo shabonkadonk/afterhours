@@ -95,6 +95,7 @@ export default function RevealPage() {
   const groupedPhotos=contributorGroups.map(({key})=>({name:contributorLabels.get(key)??"Friend",photos:galleryPhotos.filter((photo)=>(photo.uploadedBy??photo.by)===key)})).filter((group)=>group.photos.length>0);
   const closeViewer=useCallback(()=>setSelected(null),[]);
   const moveViewer=useCallback((step:number)=>setSelected((current)=>{const length=galleryPhotos.length||1;return current===null?0:(current+step+length)%length;}),[galleryPhotos.length]);
+  const showAwardsTab=useCallback(()=>setRevealTab("awards"),[]);
   const useMobileReveal=installed===true||smallScreen;
   useEffect(()=>{
     const media=window.matchMedia("(max-width: 1023px)");
@@ -125,11 +126,12 @@ export default function RevealPage() {
     <div className={`reveal-mobile__body reveal-mobile__body--${revealTab}`}>
       {revealTab==="roll"&&<section className="reveal-mobile__roll-panel">
         <div className="reveal-mobile__cover">
-          {photos[0]?<PhotoImage src={photos[0].src} thumbnailSrc={photos[0].thumbnailSrc} fallbackSrc={photos[0].cloudinaryOriginalSrc} alt={photos[0].caption||`Cover photo from ${roll.name}`} loading="eager" className="h-full w-full object-cover" style={{filter:legacyFilter(photos[0])}}/>:<div className="reveal-mobile__cover-empty"><Camera size={28}/><span>THE ENVELOPE IS EMPTY</span></div>}
+          {photos[0]?<PhotoImage src={photos[0].src} fallbackSrc={photos[0].cloudinaryOriginalSrc} alt={photos[0].caption||`Cover photo from ${roll.name}`} loading="eager" className="h-full w-full object-cover" style={{filter:legacyFilter(photos[0])}}/>:<div className="reveal-mobile__cover-empty"><Camera size={28}/><span>THE ENVELOPE IS EMPTY</span></div>}
           <div><span>{photos.length.toString().padStart(2,"0")} FRAMES · {roll.participants.length} PEOPLE</span><ThemeBadge theme={roll.theme}/></div>
         </div>
         {isCloudRoll&&roll.expiresAt?<RollRetention rollId={roll.id} expiresAt={roll.expiresAt} isHost={isHost} compact/>:<p className="reveal-mobile-retention">{isCloudRoll?"This roll is temporary. Photos are kept for 30 days, then held for a 7-day renewal window.":"Demo rolls stay in this browser. Cloud rolls are kept for 30 days after reveal, followed by a 7-day renewal window."}</p>}
         {photos.length>0?<RollExportControls rollName={roll.name} photos={photos} compact/>:<p className="reveal-mobile__empty-save">No photos to save from this roll.</p>}
+        {photos.length>0&&<button type="button" onClick={()=>{setRevealTab("photos");setMobilePhotoIndex(0);}} className="reveal-mobile__start button-primary"><span>START THE REVEAL</span><ArrowUpRight size={15}/></button>}
       </section>}
       {revealTab==="photos"&&<section className="reveal-mobile__photos-panel" aria-label="Photos organized by contributor">
         <div className="reveal-mobile__section-heading"><div><p className="eyebrow">IN CHRONOLOGICAL ORDER</p><h2>Photos <span>{photos.length}</span></h2></div>
@@ -137,7 +139,7 @@ export default function RevealPage() {
         </div>
         {mobilePhoto?<>
           <button type="button" onClick={()=>setSelected(mobilePhotoIndex)} className="reveal-mobile__photo-stage" aria-label={`Open photo ${mobilePhotoIndex+1}`}>
-            <span className="reveal-mobile__photo-image"><PhotoImage src={mobilePhoto.src} thumbnailSrc={mobilePhoto.thumbnailSrc} fallbackSrc={mobilePhoto.cloudinaryOriginalSrc} alt={mobilePhoto.caption||`Photo from ${mobilePhoto.by}`} loading="eager" className="h-full w-full object-contain" style={{filter:legacyFilter(mobilePhoto)}}/></span>
+            <span key={mobilePhoto.id} className="reveal-mobile__photo-image"><PhotoImage src={mobilePhoto.src} fallbackSrc={mobilePhoto.cloudinaryOriginalSrc} alt={mobilePhoto.caption||`Photo from ${mobilePhoto.by}`} loading="eager" className="h-full w-full object-contain" style={{filter:legacyFilter(mobilePhoto)}}/></span>
             <span className="reveal-mobile__photo-index">FRAME {String(photos.indexOf(mobilePhoto)+1).padStart(2,"0")} · {formatTime(mobilePhoto.at)}</span>
           </button>
           <div className="reveal-mobile__photo-caption"><p>{mobilePhoto.caption||"No caption. Just the moment."}</p><span>{mobilePhoto.by} · {formatDate(mobilePhoto.at,{month:"short",day:"numeric"})}</span></div>
@@ -153,23 +155,26 @@ export default function RevealPage() {
           <div className="reveal-mobile__crew-controls"><button type="button" disabled={crewEntries.length<2} onClick={()=>setCrewIndex((current)=>(current-1+crewEntries.length)%crewEntries.length)} aria-label="Previous crew member"><ChevronLeft size={20}/></button><span>{String(crewIndex+1).padStart(2,"0")} / {String(crewEntries.length).padStart(2,"0")}</span><button type="button" disabled={crewEntries.length<2} onClick={()=>setCrewIndex((current)=>(current+1)%crewEntries.length)} aria-label="Next crew member"><ChevronRight size={20}/></button></div>
         </>:<div className="reveal-mobile__photos-empty"><UsersRound size={24}/><p>No crew members listed.</p></div>}
       </section>}
-      {revealTab==="awards"&&<div className="reveal-mobile__awards"><AwardsSection rollId={roll.id} rollName={roll.name} rollDate={roll.createdAt} photos={photos} isCloudRoll={isCloudRoll}/></div>}
+      <div hidden={revealTab!=="awards"} className="reveal-mobile__awards"><AwardsSection rollId={roll.id} rollName={roll.name} rollDate={roll.createdAt} photos={photos} isCloudRoll={isCloudRoll} isHost={isHost} onCeremonyActivated={showAwardsTab}/></div>
     </div>
     {selected!==null&&galleryPhotos.length>0&&<PhotoViewer photos={galleryPhotos} index={selected} rollName={roll.name} close={closeViewer} move={moveViewer}/>}
   </main>;
   return <main className="reveal-desktop-page mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16"><div className="reveal-desktop-page__inner mx-auto max-w-[1120px]"><LocalDemoNote/>
     <Link href={`/rolls/${roll.id}`} className="mt-8 inline-flex items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]"><ArrowLeft size={13}/> BACK TO SESSION</Link>
     <p className="mt-5 font-display text-2xl leading-tight text-[#ded8cd] sm:text-3xl">{roll.name}</p>
-    <div className="reveal-in mt-7 border border-white/10 bg-[#191714] p-5 sm:p-9">
+    <div className="reveal-in reveal-desktop-hero relative isolate mt-7 min-h-[70svh] overflow-hidden border border-white/10 bg-[#191714] p-5 sm:p-9">
+      {photos[0]&&<PhotoImage src={photos[0].src} fallbackSrc={photos[0].cloudinaryOriginalSrc} alt="" aria-hidden="true" loading="eager" className="reveal-desktop-hero__image absolute inset-0 h-full w-full object-cover"/>}
+      <div className="reveal-desktop-hero__shade absolute inset-0" aria-hidden="true"/>
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="eyebrow mb-3">THE WAIT IS OVER <span className="mx-2 text-[#a33a32]">/</span> {formatDate(roll.createdAt).toUpperCase()}</p><h1 className="font-display text-5xl leading-[.92] tracking-[-.06em] sm:text-7xl">The night,<br/><i className="text-[#b54b40]">as it happened.</i></h1></div><div className="flex items-center gap-4"><AvatarStack people={roll.participants}/><div><p className="font-mono text-[10px] text-[#d4cdbf]">{photos.length.toString().padStart(2,"0")} FRAMES</p><p className="mt-1 font-mono text-[8px] tracking-[.12em] text-[#746e64]">{roll.participants.length} PEOPLE WERE THERE</p></div></div></div>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-white/10 py-3"><ThemeBadge theme={roll.theme}/><p className="font-mono text-[9px] tracking-[.1em] text-[#827b70]">SHOT BY YOUR CREW · IN CHRONOLOGICAL ORDER</p></div>
     </div>
+    {photos.length>0&&<a href="#roll-photos" className="reveal-desktop-start button-primary mt-5 min-h-12 w-fit px-5 text-xs">START THE REVEAL <ArrowUpRight size={14}/></a>}
     {isCloudRoll && roll.expiresAt && <RollRetention rollId={roll.id} expiresAt={roll.expiresAt} isHost={isHost}/>}
     {!isCloudRoll && <div className="mt-5 border border-white/10 bg-white/[.025] p-4 text-xs leading-5 text-[#a49b8d]">Demo rolls stay in this browser. The 30-day cloud retention timer starts when a shared roll is revealed.</div>}
     {photos.length > 0 && <RollExportControls rollName={roll.name} photos={photos}/>}
-    <AwardsSection rollId={roll.id} rollName={roll.name} rollDate={roll.createdAt} photos={photos} isCloudRoll={isCloudRoll}/>
+    <AwardsSection rollId={roll.id} rollName={roll.name} rollDate={roll.createdAt} photos={photos} isCloudRoll={isCloudRoll} isHost={isHost}/>
     {photos.length ? <>
-      <div className="mt-7 flex flex-col justify-between gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-end">
+      <div id="roll-photos" className="mt-7 flex flex-col justify-between gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-end">
         <div><p className="eyebrow flex items-center gap-2"><UsersRound size={13} className="text-[#b54b40]"/> THE PEOPLE BEHIND THE PHOTOS</p><p className="mt-1 text-xs text-[#837c71]">Names and times from your crew, in the order things happened.</p></div>
         <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Filter photos by contributor" value={contributorFilter} onChange={(event)=>{setSelected(null);setContributorFilter(event.target.value);}} className="min-h-10 border border-white/15 bg-[#191714] px-3 font-mono text-[9px] tracking-[.08em] text-[#d5cfc3]">

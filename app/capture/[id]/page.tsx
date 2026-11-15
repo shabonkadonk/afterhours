@@ -56,7 +56,7 @@ export default function CapturePage() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [filterId, setFilterId] = useState<PhotoFilterId>("original");
   const [dateStampEnabled, setDateStampEnabled] = useState(false);
-  const [dateStampOrientation, setDateStampOrientation] = useState<"horizontal" | "vertical">("vertical");
+  const [dateStampOrientation, setDateStampOrientation] = useState<"horizontal" | "vertical">("horizontal");
   const [dateStampYear, setDateStampYear] = useState<"photo" | "2006">("photo");
   const [caption, setCaption] = useState("");
   const [error, setError] = useState("");
@@ -300,7 +300,7 @@ export default function CapturePage() {
     setProgress(0);
     setProgressPercent(0);
     try {
-      const imprintAllowed = filterId === "y2k" || filterId === "flash";
+      const imprintAllowed = filterId === "y2k" || filterId === "disposable" || filterId === "flash";
       const key = JSON.stringify({ version: PHOTO_FILTER_VERSION, roll: roll.id, files: files.map((file) => [file.name, file.size, file.lastModified]), filterId, dateStampEnabled: imprintAllowed&&dateStampEnabled, dateStampOrientation: imprintAllowed&&dateStampEnabled?dateStampOrientation:undefined, dateStampYear: imprintAllowed&&dateStampEnabled?dateStampYear:undefined, caption: caption.trim(), cloudUpload });
       const additions = preparedUpload.current?.key === key ? [...preparedUpload.current.additions] : [];
       setProgress(additions.length);
@@ -312,13 +312,13 @@ export default function CapturePage() {
         const imageBlob=await processPhotoFile(files[index],{
           filterId,
           seed,
-          dateStamp:(filterId==="y2k"||filterId==="flash")&&dateStampEnabled,
+          dateStamp:(filterId==="y2k"||filterId==="disposable"||filterId==="flash")&&dateStampEnabled,
           dateStampOrientation,
           dateStampYear,
-          maxDimension:cloudUpload?3200:2560,
-          maxPixels:cloudUpload?8_000_000:5_000_000,
-          maxBytes:cloudUpload?4_800_000:430_000,
-          quality:cloudUpload?0.92:0.87,
+          maxDimension:cloudUpload?3600:2560,
+          maxPixels:cloudUpload?10_000_000:5_000_000,
+          maxBytes:cloudUpload?5_000_000:430_000,
+          quality:cloudUpload?0.95:0.87,
         });
         const thumbnailBlob=await createPhotoThumbnail(imageBlob);
         const imageUrl=cloudUpload?URL.createObjectURL(imageBlob):await blobToDataUrl(imageBlob);
@@ -362,10 +362,10 @@ export default function CapturePage() {
         <div className={`capture-upload-actions mt-4 grid ${installed===true?"grid-cols-2":"grid-cols-1"} gap-2`}><label className={`button-primary relative min-h-12 cursor-pointer ${saving?"cursor-wait opacity-60":""}`}><Upload size={14}/> Choose photos<input ref={photoInputRef} type="file" accept="image/*" multiple disabled={saving} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={chooseFile}/></label>{installed===true&&<button type="button" disabled={saving} onClick={()=>void startCamera("environment")} className={`capture-camera-action button-secondary relative min-h-12 ${saving?"cursor-wait opacity-60":""}`}><Camera size={14}/> Open camera</button>}</div>
         </section>
         <section className="capture-wizard__step capture-wizard__step--look" data-y2k-selected={filterId==="y2k"} style={useWizard?{display:captureStep===1?"flex":"none",flexDirection:"column"}:undefined}>
-        <fieldset disabled={saving} className="capture-wizard__look-fieldset disabled:opacity-70"><legend className="eyebrow">PICK A LOOK</legend><div className="capture-wizard__look-grid" style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gridTemplateRows:filterId==="y2k"?"repeat(2, 78px)":"repeat(2, minmax(0, 1fr))",gridTemplateAreas:'"original y2k flash" "disposable rio mono"'}}>{FILTERS.map((filter)=><button type="button" key={filter.id} data-filter={filter.id} onClick={()=>setFilterId(filter.id)} aria-pressed={filter.id===filterId} style={{gridArea:filter.id}} className={`capture-wizard__look-card choice-card border p-1.5 text-left ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="capture-wizard__look-swatch mb-2 block" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div></fieldset>
-        {(filterId==="y2k"||filterId==="flash")&&<section className="date-imprint-card mt-6 border border-white/10 bg-[#201d19] p-3 sm:p-4">
+        <fieldset disabled={saving} className="capture-wizard__look-fieldset disabled:opacity-70"><legend className="eyebrow">PICK A LOOK</legend><div className="capture-wizard__look-grid" style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",gridTemplateRows:filterId==="y2k"?"repeat(2, 78px)":"repeat(2, minmax(0, 1fr))",gridTemplateAreas:'"original y2k flash" "disposable rio mono"'}}>{FILTERS.map((filter)=><button type="button" key={filter.id} data-filter={filter.id} onClick={()=>{setFilterId(filter.id);if(filter.id==="y2k"||filter.id==="disposable"){setDateStampEnabled(true);setDateStampOrientation("horizontal");}}} aria-pressed={filter.id===filterId} style={{gridArea:filter.id}} className={`capture-wizard__look-card choice-card border p-1.5 text-left ${filterId===filter.id?"border-[#a44b42] bg-[#a33a32]/[.07]":"border-white/10 hover:border-white/25"}`}><span className="capture-wizard__look-swatch mb-2 block" style={{background:filter.swatch}}/><span className="block truncate text-[10px] text-[#e1dbcf] sm:text-[11px]">{filter.label}</span><span className="mt-0.5 block truncate font-mono text-[8px] text-[#777168] sm:text-[9px]">{filter.description}</span></button>)}</div></fieldset>
+        {(filterId==="y2k"||filterId==="disposable"||filterId==="flash")&&<section className="date-imprint-card mt-6 border border-white/10 bg-[#201d19] p-3 sm:p-4">
           <div className="date-imprint-header">
-            <div className="date-imprint-heading"><span className="date-imprint-icon"><CalendarClock size={16}/></span><p className="date-imprint-title eyebrow">{filterId==="flash"?"FLASH DATE IMPRINT":"Y2K DATE STAMP"}</p></div>
+            <div className="date-imprint-heading"><span className="date-imprint-icon"><CalendarClock size={16}/></span><p className="date-imprint-title eyebrow">{filterId==="flash"?"FLASH DATE IMPRINT":filterId==="disposable"?"DISPOSABLE DATE IMPRINT":"Y2K DATE STAMP"}</p></div>
             <button type="button" disabled={saving} aria-pressed={dateStampEnabled} onClick={()=>setDateStampEnabled((current)=>!current)} className={`date-imprint-toggle border font-mono tracking-[.1em] transition disabled:opacity-50 ${dateStampEnabled?"border-[#d7963a]/50 bg-[#d7963a]/10 text-[#f1bc61]":"border-white/15 text-[#8d867a]"}`}>{dateStampEnabled?"STAMP ON":"STAMP OFF"}</button>
             <p className="date-imprint-description text-[10px] leading-4 text-[#8c8377]">Keep the photo date, or use its month and day with vintage '06.</p>
           </div>

@@ -17,6 +17,8 @@ type ServerState = {
   providerMode: ProviderMode;
   maxPhotos: number;
   canGenerate: boolean;
+  canStartCeremony: boolean;
+  ceremonyStartedAt: string | null;
   canDelete: boolean;
   isOwner: boolean;
   canEditSettings: boolean;
@@ -55,12 +57,16 @@ export function AwardsSection({
   rollDate,
   photos,
   isCloudRoll,
+  isHost,
+  onCeremonyActivated,
 }: {
   rollId: string;
   rollName: string;
   rollDate: string;
   photos: Photo[];
   isCloudRoll: boolean;
+  isHost: boolean;
+  onCeremonyActivated?: () => void;
 }) {
   const [status, setStatus] = useState<AwardsStatus>(isCloudRoll ? "loading" : "none");
   const [serverState, setServerState] = useState<ServerState | null>(null);
@@ -72,6 +78,7 @@ export function AwardsSection({
   const [consent, setConsent] = useState(false);
   const [selectionOpen, setSelectionOpen] = useState(false);
   const [ceremonyStep, setCeremonyStep] = useState(-3);
+  const [ceremonyStarting, setCeremonyStarting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [shareMessage, setShareMessage] = useState("");
@@ -105,10 +112,17 @@ export function AwardsSection({
   useEffect(() => { void refreshStatus(); }, [refreshStatus]);
 
   useEffect(() => {
-    if (!isCloudRoll || status !== "generating") return;
-    const timer = window.setInterval(() => { void refreshStatus(); }, 2500);
+    if (!isCloudRoll || (status !== "generating" && serverState?.ceremonyStartedAt)) return;
+    const timer = window.setInterval(() => { void refreshStatus(); }, status === "generating" ? 2500 : 5000);
     return () => window.clearInterval(timer);
-  }, [isCloudRoll, refreshStatus, status]);
+  }, [isCloudRoll, refreshStatus, serverState?.ceremonyStartedAt, status]);
+
+  useEffect(() => {
+    if (isCloudRoll && serverState?.ceremonyStartedAt && awardsResult) {
+      setCeremonyStep(-1);
+      onCeremonyActivated?.();
+    }
+  }, [awardsResult, isCloudRoll, onCeremonyActivated, serverState?.ceremonyStartedAt]);
 
   useEffect(() => {
     const dialogOpen = selectionOpen || ceremonyStep >= -1;
@@ -164,17 +178,17 @@ export function AwardsSection({
   }
 
   async function startGeneration() {
-    if (!selectedIds.length || !consent || settingsSaving) return;
+    if (!selectedIds.length || !consent || settingsSaving || (isCloudRoll && !isHost)) return;
     setBusy(true);
     setError("");
     setSelectionOpen(false);
     setStatus("generating");
-    setCeremonyStep(-1);
     try {
       if (!isCloudRoll) {
         setAwardsResult(makeLocalPreview(selectedIds));
         setResultProvider("mock-preview");
         setStatus("completed");
+        setCeremonyStep(-1);
         return;
       }
       const response = await fetch(`/api/rolls/${rollId}/awards`, {
@@ -201,6 +215,28 @@ export function AwardsSection({
       if (refreshedStatus !== "generating" && refreshedStatus !== "completed") setStatus("failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function startSharedCeremony() {
+    if (!isCloudRoll || !isHost || ceremonyStarting) return;
+    setCeremonyStarting(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/rolls/${rollId}/awards`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start-ceremony" }),
+      });
+      const payload = await response.json() as { ceremonyStartedAt?: string | null; error?: string };
+      if (!response.ok || !payload.ceremonyStartedAt) throw new Error(payload.error ?? "The ceremony could not be started.");
+      setServerState((current) => current ? { ...current, ceremonyStartedAt: payload.ceremonyStartedAt!, canStartCeremony: false } : current);
+      setCeremonyStep(-1);
+      await refreshStatus();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The ceremony could not be started.");
+    } finally {
+      setCeremonyStarting(false);
     }
   }
 
@@ -276,9 +312,18 @@ export function AwardsSection({
           {resultProvider === "mock" || resultProvider === "mock-preview" ? <span className="font-mono text-[8px] tracking-[.12em] text-[#a99d83]">SAMPLE RESULTS · PHOTOS NOT ANALYZED</span> : <span className="font-mono text-[8px] tracking-[.12em] text-[#a99d83]">SAVED WITH THIS ROLL</span>}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button onClick={() => setCeremonyStep(-1)} className="button-primary min-h-11 border-[#c5a978] bg-[#9c8052] px-4 text-xs text-[#fff5df] hover:border-[#d6bd94] hover:bg-[#ae9160]">WATCH THE CEREMONY <ArrowRight size={14}/></button>
+          {isCloudRoll && !serverState?.ceremonyStartedAt
+            ? isHost
+              ? <button onClick={() => void startSharedCeremony()} disabled={ceremonyStarting || !serverState?.canStartCeremony} className="button-primary min-h-11 px-4 text-xs disabled:cursor-wait disabled:opacity-60">{ceremonyStarting ? "OPENING THE ROOM…" : "NOTIFY GUESTS & START CEREMONY"} <ArrowRight size={14}/></button>
+              : <p className="flex min-h-11 items-center font-mono text-[9px] tracking-[.1em] text-[#a99d83]">THE HOST IS GETTING EVERYONE IN THE ROOM</p>
+            : <button onClick={() => setCeremonyStep(-1)} className="button-primary min-h-11 px-4 text-xs">WATCH THE CEREMONY <ArrowRight size={14}/></button>}
           {serverState?.canDelete && <button onClick={deleteAwards} disabled={busy} className="button-secondary min-h-11 px-4 text-[10px] text-[#b0a79a]"><Trash2 size={13}/> CLEAR SAVED AWARDS</button>}
         </div>
+      </div> : null}
+
+      {isCloudRoll && !isHost && status === "completed" && !awardsResult && !serverState?.ceremonyStartedAt ? <div className="mt-6 flex min-h-20 items-center gap-3 border-t border-[#d6c7ad]/15 pt-5">
+        <span className="awards-star shrink-0"><Sparkles size={18}/></span>
+        <div><p className="font-display text-xl text-[#e9e1d2]">The host is setting the stage.</p><p className="mt-1 text-[10px] leading-4 text-[#9b9386]">The winners stay tucked away until the host starts the ceremony.</p></div>
       </div> : null}
 
       {!busy && status !== "loading" && status !== "completed" ? <div className="mt-6 grid gap-4 border-t border-[#d6c7ad]/15 pt-5 sm:grid-cols-[1fr_auto] sm:items-center">
@@ -288,7 +333,8 @@ export function AwardsSection({
         </div>
         {isCloudRoll && !serverState ? <div className="max-w-xs text-[10px] leading-4 text-[#b0a79a]">Awards couldn’t verify access just now. Refresh the gallery and try again.</div>
           : isCloudRoll && providerMode === "unavailable" ? <div className="max-w-xs text-[10px] leading-4 text-[#b0a79a]">Awards are in sample mode by default. Live photo analysis remains disabled until provider access and requirements are confirmed.</div>
-            : <button onClick={openSelection} disabled={!photos.length || busy || (isCloudRoll && !serverState?.canGenerate)} className="button-primary min-h-12 border-[#c5a978] bg-[#9c8052] px-5 text-xs text-[#fff5df] hover:border-[#d6bd94] hover:bg-[#ae9160] disabled:cursor-not-allowed disabled:opacity-50">{isCloudRoll ? status === "failed" ? "TRY AGAIN" : "GENERATE AWARDS" : "PREVIEW SAMPLE CEREMONY"} <ArrowRight size={14}/></button>}
+            : isCloudRoll && !isHost ? <div className="max-w-xs font-mono text-[9px] leading-4 tracking-[.08em] text-[#b0a79a]">THE HOST WILL OPEN THE AWARDS ENVELOPES</div>
+              : <button onClick={openSelection} disabled={!photos.length || busy || (isCloudRoll && !serverState?.canGenerate)} className="button-primary min-h-12 px-5 text-xs disabled:cursor-not-allowed disabled:opacity-50">{isCloudRoll ? status === "failed" ? "TRY AGAIN" : "GENERATE AWARDS" : "PREVIEW SAMPLE CEREMONY"} <ArrowRight size={14}/></button>}
       </div> : null}
 
       {isCloudRoll && !serverState && error && !selectionOpen ? <p role="alert" className="mt-4 border-l-2 border-[#c55448] pl-3 text-xs leading-5 text-[#e2aa9f]">{error}</p> : null}
@@ -299,12 +345,12 @@ export function AwardsSection({
 
     {ceremonyStep >= -1 && status === "completed" && awardsResult && !busy ? <div className="awards-ceremony" role="dialog" aria-modal="true" aria-label="Afterhours Awards ceremony">
       <div className="awards-ceremony__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCeremonyStep(-3); }}>
-        <div className="awards-ceremony__card grain relative max-h-[92svh] w-full max-w-3xl overflow-y-auto border border-[#ddc99f]/30 bg-[radial-gradient(ellipse_at_50%_0%,rgba(192,170,134,.2),transparent_52%),linear-gradient(145deg,#27231d,#171613_75%)] p-5 shadow-2xl sm:p-9">
+        <div className="awards-ceremony__card grain relative max-h-[92svh] w-full max-w-5xl overflow-y-auto border border-[#ddc99f]/30 bg-[radial-gradient(ellipse_at_50%_0%,rgba(192,170,134,.2),transparent_52%),linear-gradient(145deg,#27231d,#171613_75%)] p-5 shadow-2xl sm:p-9">
           <button onClick={() => setCeremonyStep(-3)} className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center border border-white/15 bg-black/30 text-[#d9d0bf]" aria-label="Close ceremony"><X size={17}/></button>
           {ceremonyStep === -1 ? <div className="relative py-8 text-center sm:py-14">
             <Sparkles size={22} className="mx-auto text-[#d4b77c]"/><p className="mt-5 font-mono text-[10px] tracking-[.27em] text-[#d2b880]">A VERY OFFICIAL PRODUCTION</p><h2 className="awards-chrome mt-4 font-mono text-2xl tracking-[.16em] sm:text-4xl">AFTERHOURS AWARDS</h2><p className="mt-3 font-display text-2xl text-[#e8ddc9]">Your night. Your awards.</p><p className="mt-5 font-mono text-[9px] tracking-[.11em] text-[#938a7b]">{rollName.toUpperCase()} <span className="mx-2 text-[#bf9e62]">/</span> {formatDate(rollDate).toUpperCase()}</p><p className="mx-auto mt-4 max-w-md text-xs leading-5 text-[#a49a88]">{awardsResult.summary}</p>
             <button onClick={() => setCeremonyStep(0)} className="button-primary mt-7 border-[#d1b278] bg-[#a27f47] px-7 text-xs text-[#fff4dc] hover:border-[#e1c995] hover:bg-[#b2925c]">START THE CEREMONY <ArrowRight size={14}/></button>
-          </div> : currentAward ? <div className="awards-ceremony__award relative">
+          </div> : currentAward ? <div key={currentAward.id} className="awards-ceremony__award relative">
             <div className="flex items-center justify-between gap-3 pr-10"><p className="font-mono text-[8px] tracking-[.18em] text-[#c7ad7c]">{finalScreen ? "THE GRAND FINALE" : `AWARD ${String(ceremonyStep + 1).padStart(2, "0")} / ${String(awards.length).padStart(2, "0")}`}</p><span className="font-mono text-[8px] text-[#8e8577]">{rollName.toUpperCase()}</span></div>
             <p className="mt-5 font-mono text-[9px] tracking-[.18em] text-[#a99673]">{finalScreen ? "PHOTO OF THE NIGHT" : "AND THE AWARD GOES TO…"}</p>
             <h2 className="awards-chrome mt-2 font-display text-4xl leading-[.95] tracking-[-.04em] sm:text-6xl">{currentAward.title}</h2>

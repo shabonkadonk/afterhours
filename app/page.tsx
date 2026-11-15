@@ -13,7 +13,7 @@ function BrowserHome() {
   return (
     <main className="browser-home overflow-hidden pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <section className="browser-home__hero relative mx-auto max-w-[1440px] px-4 pb-8 pt-6 sm:px-10 sm:pb-16 sm:pt-9 lg:px-16 lg:pb-20 lg:pt-14">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_18%_40%,rgba(163,58,50,.14),transparent_39%),radial-gradient(ellipse_at_86%_32%,rgba(54,93,145,.2),transparent_43%)]" />
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_18%_40%,rgba(122,45,50,.11),transparent_39%),radial-gradient(ellipse_at_86%_32%,rgba(38,61,98,.14),transparent_43%)]" />
         <div className="grid items-center gap-8 lg:min-h-[74svh] lg:gap-10 lg:grid-cols-[1.05fr_.95fr]">
           <div className="relative z-10 max-w-[700px]">
             <p className="eyebrow rise-in mb-5 flex items-center gap-3 sm:mb-7"><span className="h-px w-7 bg-[#a33a32]" />A shared camera roll for nights out</p>

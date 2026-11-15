@@ -43,6 +43,7 @@ function GuestCamera({ roll }: { roll: Roll }) {
   const [openingCamera, setOpeningCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(0);
+  const [captureFlash, setCaptureFlash] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<PhotoFilterId>("disposable");
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState<boolean | null>(null);
@@ -160,10 +161,12 @@ function GuestCamera({ roll }: { roll: Roll }) {
       const image = await processPhotoFile(file, {
         filterId: selectedFilter,
         seed,
-        maxDimension: 3200,
-        maxPixels: 8_000_000,
-        maxBytes: 4_800_000,
-        quality: 0.92,
+        dateStamp: selectedFilter === "y2k" || selectedFilter === "disposable" || selectedFilter === "flash",
+        dateStampOrientation: "horizontal",
+        maxDimension: 3600,
+        maxPixels: 10_000_000,
+        maxBytes: 5_000_000,
+        quality: 0.95,
       });
       const thumbnail = await createPhotoThumbnail(image);
       const cloudUpload = Boolean(configured && user);
@@ -208,6 +211,8 @@ function GuestCamera({ roll }: { roll: Roll }) {
       setCameraError("Couldn't capture this frame. Try again.");
       return;
     }
+    setCaptureFlash(true);
+    window.setTimeout(() => setCaptureFlash(false), 220);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
       if (!blob) {
@@ -238,10 +243,14 @@ function GuestCamera({ roll }: { roll: Roll }) {
   const frameLabel = remaining === 0
     ? sharedRemaining === 0 ? "ROLL FULL" : "NO FRAMES LEFT"
     : `${remaining} ${remaining === 1 ? "FRAME" : "FRAMES"} LEFT`;
+  const captureDate = new Date();
+  const dateImprint = `'${String(captureDate.getFullYear()).slice(-2)} ${String(captureDate.getMonth() + 1).padStart(2, "0")} ${String(captureDate.getDate()).padStart(2, "0")}`;
 
   return <main className="guest-camera" data-filter={selectedFilter}>
     <video ref={videoRef} autoPlay playsInline muted className={`guest-camera__video${captured ? " is-covered" : ""}`} aria-label="Live camera viewfinder"/>
     {captured && <img src={capturedPreview} alt="Just captured" className="guest-camera__captured"/>}
+    {captureFlash && <div className="guest-camera__flash-overlay" aria-hidden="true"/>}
+    {(selectedFilter === "y2k" || selectedFilter === "disposable" || selectedFilter === "flash") && stage === "camera" && !captured && <div className="guest-camera__date-imprint" aria-hidden="true">{dateImprint}</div>}
     {!stream && stage === "camera" && <div className="guest-camera__no-feed"><Camera size={26}/><p>Camera paused</p><button type="button" onClick={() => void openCamera()}>Open camera</button></div>}
 
     <header className="guest-camera__topbar">

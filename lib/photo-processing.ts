@@ -17,7 +17,7 @@ export type PhotoProcessingOptions = {
 type DisposableVariation = { exposure: number; temperature: number };
 type SceneExposure = { y2kLift: number };
 
-export const PHOTO_FILTER_VERSION = 38;
+export const PHOTO_FILTER_VERSION = 39;
 
 const SEVEN_SEGMENT_DIGITS: Record<string, string> = {
   "0": "abcdef",
@@ -561,8 +561,8 @@ function addDateImprint(context: CanvasRenderingContext2D, width: number, height
   } else {
     context.translate(width - marginX - stampWidth, height - marginY - stampHeight);
   }
-  context.fillStyle = "rgba(255, 112, 43, 0.92)";
-  context.shadowColor = "rgba(255, 92, 35, 0.7)";
+  context.fillStyle = "rgba(255, 182, 77, 0.94)";
+  context.shadowColor = "rgba(255, 157, 48, 0.68)";
   context.shadowBlur = unit * 0.65;
   const segmentThickness = unit * 0.62;
   const horizontal = (x: number, y: number) => {
@@ -627,8 +627,9 @@ async function encodeWithinLimit(canvas: HTMLCanvasElement, quality: number, max
   let outputQuality = quality;
   let blob = await encodeJpeg(canvas, outputQuality);
   if (!maxBytes) return blob;
-  while (blob.size > maxBytes && outputQuality > 0.7) {
-    outputQuality = Math.max(0.7, outputQuality - 0.045);
+  const qualityFloor = maxBytes < 1_000_000 ? 0.7 : Math.max(0.82, quality - 0.1);
+  while (blob.size > maxBytes && outputQuality > qualityFloor) {
+    outputQuality = Math.max(qualityFloor, outputQuality - 0.03);
     blob = await encodeJpeg(canvas, outputQuality);
   }
   if (blob.size <= maxBytes) return blob;
@@ -645,7 +646,7 @@ async function encodeWithinLimit(canvas: HTMLCanvasElement, quality: number, max
     resizedContext.imageSmoothingQuality = "high";
     resizedContext.drawImage(current, 0, 0, resized.width, resized.height);
     current = resized;
-    outputQuality = Math.min(0.84, quality);
+    outputQuality = maxBytes < 1_000_000 ? Math.min(0.84, quality) : Math.max(0.84, quality - 0.06);
     blob = await encodeJpeg(current, outputQuality);
   }
   if (blob.size > maxBytes) throw new Error("This photo could not be compressed enough for this roll. Try a smaller image.");
@@ -710,7 +711,7 @@ export async function processPhotoFile(file: File, options: PhotoProcessingOptio
       addHalation(context, width, height);
       addVignette(context, width, height, random);
     }
-    if (options.dateStamp && (options.filterId === "y2k" || options.filterId === "flash")) {
+    if (options.dateStamp && (options.filterId === "y2k" || options.filterId === "disposable" || options.filterId === "flash")) {
       addDateImprint(context, width, height, await getCaptureDate(file), options.dateStampOrientation ?? "horizontal", options.dateStampYear ?? "photo");
     }
     if (options.filterId === "disposable") await addDisposableFilmGrain(context, width, height, random);
