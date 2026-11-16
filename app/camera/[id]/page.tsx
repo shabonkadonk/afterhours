@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bell, Camera, Check, Flashlight, ImagePlus, LoaderCircle } from "lucide-react";
+import { Bell, Camera, Check, Flashlight, ImagePlus, LoaderCircle, RefreshCw } from "lucide-react";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { NotificationSettings } from "@/components/notification-settings";
 import { useApp } from "@/components/app-provider";
 import { useAuth } from "@/components/auth-provider";
 import { createPhotoThumbnail, getPhotoSeed, PHOTO_FILTER_VERSION, processPhotoFile, type PhotoFilterId } from "@/lib/photo-processing";
-import { guestCameraFrameLimit, hasGuestCameraSetup, rememberGuestCameraSetup } from "@/lib/guest-camera-session";
+import { forgetGuestRoll, guestCameraFrameLimit, hasGuestCameraSetup, rememberGuestCameraSetup } from "@/lib/guest-camera-session";
 import type { Roll } from "@/lib/types";
 
 const CAMERA_FILTERS: Array<{ id: PhotoFilterId; label: string }> = [
@@ -20,11 +20,11 @@ const CAMERA_FILTERS: Array<{ id: PhotoFilterId; label: string }> = [
   { id: "mono", label: "Mono" },
 ];
 
-async function requestRearCamera() {
+async function requestCamera(facingMode: "environment" | "user") {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't open a live camera. Try opening the invite in Safari or Chrome.");
   return navigator.mediaDevices.getUserMedia({
     audio: false,
-    video: { facingMode: { ideal: "environment" } },
+    video: { facingMode: { ideal: facingMode }, width: { ideal: 3840 }, height: { ideal: 2880 } },
   });
 }
 
@@ -45,6 +45,7 @@ function GuestCamera({ roll }: { roll: Roll }) {
   const [saved, setSaved] = useState(0);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<PhotoFilterId>("disposable");
+  const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState<boolean | null>(null);
   const sharedRemaining = Math.max(0, roll.photoLimit - roll.photos.length);
@@ -65,7 +66,7 @@ function GuestCamera({ roll }: { roll: Roll }) {
       return () => { cancelled = true; };
     }
 
-    void requestRearCamera().then((nextStream) => {
+    void requestCamera("environment").then((nextStream) => {
       if (cancelled) {
         nextStream.getTracks().forEach((track) => track.stop());
         return;
@@ -120,7 +121,7 @@ function GuestCamera({ roll }: { roll: Roll }) {
     setOpeningCamera(true);
     setCameraError("");
     try {
-      const nextStream = await requestRearCamera();
+      const nextStream = await requestCamera(cameraFacing);
       stream?.getTracks().forEach((track) => track.stop());
       setStream(nextStream);
       setStage("notifications");
@@ -152,6 +153,24 @@ function GuestCamera({ roll }: { roll: Roll }) {
     }
   }
 
+  async function switchCamera() {
+    if (openingCamera || busy) return;
+    const nextFacing = cameraFacing === "environment" ? "user" : "environment";
+    setOpeningCamera(true);
+    setCameraError("");
+    try {
+      const nextStream = await requestCamera(nextFacing);
+      stream?.getTracks().forEach((track) => track.stop());
+      setStream(nextStream);
+      setCameraFacing(nextFacing);
+      setTorchOn(false);
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : "Couldn't switch cameras. Try again.");
+    } finally {
+      setOpeningCamera(false);
+    }
+  }
+
   async function saveFrame(file: File) {
     if (busy) return;
     setBusy(true);
@@ -163,10 +182,10 @@ function GuestCamera({ roll }: { roll: Roll }) {
         seed,
         dateStamp: selectedFilter === "y2k" || selectedFilter === "disposable" || selectedFilter === "flash",
         dateStampOrientation: "horizontal",
-        maxDimension: 3600,
+        maxDimension: 4000,
         maxPixels: 10_000_000,
-        maxBytes: 5_000_000,
-        quality: 0.95,
+        maxBytes: 9_500_000,
+        quality: 0.97,
       });
       const thumbnail = await createPhotoThumbnail(image);
       const cloudUpload = Boolean(configured && user);
@@ -247,16 +266,17 @@ function GuestCamera({ roll }: { roll: Roll }) {
   const dateImprint = `'${String(captureDate.getFullYear()).slice(-2)} ${String(captureDate.getMonth() + 1).padStart(2, "0")} ${String(captureDate.getDate()).padStart(2, "0")}`;
 
   return <main className="guest-camera" data-filter={selectedFilter}>
-    <video ref={videoRef} autoPlay playsInline muted className={`guest-camera__video${captured ? " is-covered" : ""}`} aria-label="Live camera viewfinder"/>
+    <video ref={videoRef} autoPlay playsInline muted className={`guest-camera__video${captured ? " is-covered" : ""}${cameraFacing === "user" ? " is-mirrored" : ""}`} aria-label="Live camera viewfinder"/>
     {captured && <img src={capturedPreview} alt="Just captured" className="guest-camera__captured"/>}
     {captureFlash && <div className="guest-camera__flash-overlay" aria-hidden="true"/>}
     {(selectedFilter === "y2k" || selectedFilter === "disposable" || selectedFilter === "flash") && stage === "camera" && !captured && <div className="guest-camera__date-imprint" aria-hidden="true">{dateImprint}</div>}
     {!stream && stage === "camera" && <div className="guest-camera__no-feed"><Camera size={26}/><p>Camera paused</p><button type="button" onClick={() => void openCamera()}>Open camera</button></div>}
 
     <header className="guest-camera__topbar">
-      <Link href="/join" className="guest-camera__icon-button" aria-label="Open another invite"><ArrowLeft size={19}/></Link>
+      <span className="guest-camera__camera-spacer" aria-hidden="true"/>
       <div className="guest-camera__roll-name"><span>{roll.name}</span><small>{frameLabel}</small></div>
       <div className="guest-camera__top-actions">
+        <button type="button" onClick={() => void switchCamera()} disabled={!stream || openingCamera || busy} className="guest-camera__icon-button" aria-label={cameraFacing === "environment" ? "Switch to front camera" : "Switch to rear camera"} title={cameraFacing === "environment" ? "Switch to front camera" : "Switch to rear camera"}><RefreshCw size={17}/></button>
         <button type="button" onClick={() => setStage("notifications")} className="guest-camera__icon-button" aria-label="Notification settings"><Bell size={17}/></button>
         <button type="button" onClick={() => void toggleTorch()} disabled={!stream} aria-pressed={torchOn} className={`guest-camera__icon-button${torchOn ? " is-on" : ""}`} aria-label={torchOn ? "Turn flash off" : "Turn flash on"} title={torchAvailable === false ? "Try flash; availability depends on this camera" : "Flash / torch"}><Flashlight size={18}/></button>
       </div>
@@ -308,12 +328,22 @@ export default function CameraPage() {
   const roll = rolls.find((item) => item.id === id);
 
   useEffect(() => {
+    if (!roll || roll.status !== "active" || !user?.is_anonymous) return;
+    // Keep browser and device back gestures on the disposable camera until the roll ends.
+    window.history.pushState({ guestCamera: roll.id }, "", window.location.href);
+    const keepCameraOpen = () => window.history.pushState({ guestCamera: roll.id }, "", window.location.href);
+    window.addEventListener("popstate", keepCameraOpen);
+    return () => window.removeEventListener("popstate", keepCameraOpen);
+  }, [roll?.id, roll?.status, user?.is_anonymous]);
+
+  useEffect(() => {
     if (authLoading || !ready || !roll) return;
     if (roll.status === "revealed") router.replace(`/rolls/${roll.id}/reveal`);
     else if (user && !user.is_anonymous && roll.ownerId === user.id) router.replace(`/rolls/${roll.id}`);
   }, [authLoading, ready, roll, router, user]);
 
   if (!ready || authLoading) return <main className="grid min-h-screen place-items-center font-mono text-[10px] tracking-[.16em] text-[#827b70]">LOADING YOUR CAMERA…</main>;
+  if (!roll && user?.is_anonymous) return <main className="mx-auto grid min-h-screen max-w-md place-content-center px-6 text-center"><p className="eyebrow">CAMERA UNAVAILABLE</p><h1 className="mt-3 font-display text-3xl">This roll has ended or was deleted.</h1><p className="mt-3 text-sm leading-6 text-[#aaa396]">You can remove its saved camera from this device and join another roll.</p><button type="button" onClick={() => { forgetGuestRoll(id); router.replace("/join"); }} className="button-primary mt-6">Remove this camera</button><Link href="/join" className="button-secondary mt-3">Open another invite</Link></main>;
   if (!roll) return <main className="mx-auto grid min-h-screen max-w-md place-content-center px-6 text-center"><p className="eyebrow">NO CAMERA FOUND</p><h1 className="mt-3 font-display text-3xl">This roll isn’t on this account.</h1><Link href="/join" className="button-secondary mt-6">Open another invite</Link></main>;
   if (roll.status === "revealed" || (user && !user.is_anonymous && roll.ownerId === user.id)) return <main className="grid min-h-screen place-items-center font-mono text-[10px] tracking-[.16em] text-[#827b70]">OPENING…</main>;
   return <GuestCamera roll={roll}/>;

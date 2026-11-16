@@ -5,14 +5,14 @@ Afterhours is a shared camera roll for nights out. A host creates a roll and inv
 ## Features
 
 - Create rolls with a title, end time, photo limit, and visual theme.
-- Invite contributors with a link, QR code, or join code. Hosts get the full app; guests claim a roll-specific disposable camera with a share based on the roll limit and group size, then return to the shared gallery after reveal.
+- Invite contributors with a link, QR code, or join code. Hosts get the full app; guests claim a roll-specific disposable camera with front and rear camera controls and a share based on the roll limit and group size, then return to the shared gallery after reveal.
 - Capture photos in the installed app with the native camera, including an optional torch/flash control in Safari and other browsers when the active camera supports it. Upload photos with captions and local Canvas based camera looks. Y2K recreates warm direct flash, cool room shadows, CCD noise, and subtle color fringing; Disposable adds seeded film grain, occasional light leaks, subtle halation and vignetting, and an optional capture-date stamp.
 - Keep photos private in Supabase Storage until the roll is revealed.
 - Browse revealed galleries by contributor or timeline, filter contributors, download individual photos, or export the full roll.
 - Let guests opt in from their anonymous session to a randomized five-minute reminder and reveal alert. Hosts can also get alerts when people join their rolls.
 - Retain cloud rolls for 30 days after reveal, with a 7 day renewal window for the host before scheduled deletion.
 - Try demo mode without a backend. Demo rolls are stored only in the current browser and are not shared.
-- Preview Afterhours Awards on revealed rolls. Sample mode is enabled by default; live processing remains disabled until provider, privacy, license, and age requirements have been confirmed.
+- Run a host-led Awards ceremony on revealed rolls. Hosts generate and release saved results for members; sample mode is enabled by default, and live processing stays off until provider, privacy, license, and age requirements are confirmed.
 - Install the site on iPhone or Android as a Progressive Web App, with app-style navigation and a simple offline screen. PWA name, theme, icons, and shortcuts are defined in [`public/manifest.webmanifest`](public/manifest.webmanifest).
 - Require mobile visitors to install Afterhours before using app pages; desktop browser access remains available.
 - Keep the app portrait-oriented where the installed browser supports orientation locking. Some iPhone versions may still allow rotation; the app shows a portrait prompt in landscape.

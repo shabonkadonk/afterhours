@@ -38,3 +38,26 @@ export function getRememberedGuestRoll(inviteKind: "token" | "code", inviteValue
   }
   catch { return null; }
 }
+
+export function forgetGuestRoll(rollId: string) {
+  try {
+    if (window.localStorage.getItem(LAST_GUEST_ROLL_KEY) === rollId) {
+      window.localStorage.removeItem(LAST_GUEST_ROLL_KEY);
+    }
+    const inviteKeys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith("afterhours-guest-invite-")) inviteKeys.push(key);
+    }
+    for (const key of inviteKeys) {
+      try {
+        const remembered = JSON.parse(window.localStorage.getItem(key) ?? "null") as { rollId?: unknown } | null;
+        if (remembered?.rollId === rollId) window.localStorage.removeItem(key);
+      } catch {
+        // Leave malformed stale invite entries alone.
+      }
+    }
+  } catch {
+    // The guest can still open another invite when local storage is unavailable.
+  }
+}

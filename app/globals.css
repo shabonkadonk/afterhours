@@ -1029,6 +1029,7 @@ html.is-guest-camera body { padding: 0; }
   background: #090908;
 }
 .guest-camera__video { object-fit: cover; object-position: center; transition: filter .3s ease, opacity .2s ease; }
+.guest-camera__video.is-mirrored { transform: scaleX(-1); }
 .guest-camera__video.is-covered { opacity: 0; }
 .guest-camera[data-filter="disposable"] .guest-camera__video { filter: saturate(1.12) sepia(.1) contrast(1.04) brightness(.98); }
 .guest-camera[data-filter="flash"] .guest-camera__video { filter: saturate(1.14) contrast(1.08) brightness(1.08); }
@@ -1195,7 +1196,7 @@ html.is-guest-camera body { padding: 0; }
   .guest-camera__shutter { grid-row: 2; width: 66px; height: 66px; }
   .guest-camera__shutter > span { width: 50px; height: 50px; }
   .guest-camera__import { grid-row: 3; justify-self: center; }
-  .guest-camera__date-imprint { right: calc(env(safe-area-inset-right) + 120px); bottom: calc(env(safe-area-inset-bottom) + 22px); }
+  .guest-camera__date-imprint { right: calc(env(safe-area-inset-right) + 106px); bottom: calc(env(safe-area-inset-bottom) + 22px); font-size: clamp(11px, 2.8vh, 17px); letter-spacing: .06em; }
 }
 @media (max-width: 380px) and (orientation: portrait) {
   .guest-camera__filter-rail { right: 6px; left: 6px; gap: 5px; }

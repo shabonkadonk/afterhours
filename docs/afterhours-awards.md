@@ -1,6 +1,6 @@
 # Afterhours Awards
 
-Awards appears in the revealed-roll gallery. It lets a roll member choose photos, confirm the processing notice, and replay a saved ceremony. The standalone demo preview stays in that browser; it does not upload, analyze, or save demo photos.
+Awards appears in the revealed-roll gallery as a host-led shared ceremony. The host chooses photos, confirms the processing notice, and generates the saved results. The host can inspect completed results before starting the ceremony; starting it releases the awards to roll members. Members can replay released results. The standalone demo preview stays in that browser; it does not upload, analyze, or save demo photos.
 
 ## Current provider state
 
@@ -12,9 +12,9 @@ Cloudflare describes standard Workers AI inference as zero data retention after 
 
 ## Supabase migration
 
-Apply `supabase/migrations/20261105000000_afterhours_awards.sql` after the existing migrations. It creates the roll-scoped award record, row-level access policies, atomic generation claim/completion functions, and usage counters. Roll members can read saved awards; only the roll owner can delete them. Deleting a selected photo clears its ceremony so results cannot retain stale photo references.
+Apply `supabase/migrations/20261105000000_afterhours_awards.sql` and then `supabase/migrations/20261115000001_host_awards_ceremony.sql` after the existing migrations. The first migration creates the roll-scoped award record, atomic generation claim/completion functions, and usage counters. The second adds a ceremony start timestamp, restricts generation claims to the host, and keeps completed award content hidden from members until the host starts the ceremony. The host can inspect completed results before release. Deleting a selected photo clears its ceremony so results cannot retain stale photo references.
 
-The database claim checks revealed status, roll membership, selected photo IDs, and a three-generation daily user limit. Any authenticated roll member with access to a revealed roll can generate Awards; no subscription or billing integration is needed. It also applies a five-generation global daily cap. Successful results are cached one per roll; failed attempts can be retried. A generation stuck in `generating` for over five minutes can be reclaimed.
+The database claim checks revealed status, host authorization, selected photo IDs, and a three-generation daily user limit. Only the roll owner can generate Awards; no subscription or billing integration is needed. It also applies a five-generation global daily cap. Successful results are cached one per roll; failed attempts can be retried. A generation stuck in `generating` for over five minutes can be reclaimed. Ceremony start is host-only and idempotent, and is available only after generation completes.
 
 ## Environment variables
 

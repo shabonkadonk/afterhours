@@ -206,8 +206,8 @@ export async function addCloudPhotos(supabase: SupabaseClient, user: User, rollI
     const response = await fetch(item.src);
     if (!response.ok) throw new Error("Could not read the prepared photo.");
     const blob = await response.blob();
-    if (blob.type !== "image/jpeg" || blob.size === 0 || blob.size > 5 * 1024 * 1024) {
-      throw new Error("Photos must be valid JPEG images smaller than 5 MB.");
+    if (blob.type !== "image/jpeg" || blob.size === 0 || blob.size > 10 * 1024 * 1024) {
+      throw new Error("Photos must be valid JPEG images smaller than 10 MB.");
     }
     const photoId = item.uploadId ?? createPhotoId();
     const path = `${user.id}/${rollId}/${photoId}.jpg`;
