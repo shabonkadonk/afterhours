@@ -76,7 +76,7 @@ export default function RevealPage() {
   const { configured, user } = useAuth();
   const installed = useInstalledApp();
   const [smallScreen,setSmallScreen]=useState(false);
-  const [revealTab,setRevealTab]=useState<"roll"|"photos"|"crew"|"awards">("roll");
+  const [revealTab,setRevealTab]=useState<"roll"|"photos"|"crew"|"awards">("photos");
   const [mobilePhotoIndex,setMobilePhotoIndex]=useState(0);
   const [crewIndex,setCrewIndex]=useState(0);
   const roll=rolls.find((item)=>item.id===id);
@@ -117,11 +117,11 @@ export default function RevealPage() {
   const currentCrew=crewEntries[Math.min(crewIndex,Math.max(0,crewEntries.length-1))];
   if(useMobileReveal)return <main className={`reveal-mobile${installed===true?" reveal-mobile--installed":""}${selected!==null?" reveal-mobile--viewer-open":""}`}>
     <header className="reveal-mobile__header">
-      <Link href={`/rolls/${roll.id}`} className="reveal-mobile__back"><ArrowLeft size={14}/> SESSION</Link>
-      <div><p className="eyebrow">THE WAIT IS OVER · {formatDate(roll.createdAt,{month:"short",day:"numeric"}).toUpperCase()}</p><h1>{roll.name}</h1></div>
+      <Link href={`/rolls/${roll.id}`} className="reveal-mobile__back"><ArrowLeft size={14}/> back to the roll</Link>
+      <div><p className="eyebrow">THE ROLL IS BACK · {formatDate(roll.createdAt,{month:"short",day:"numeric"}).toUpperCase()}</p><h1>{roll.name}</h1></div>
     </header>
     <nav className="reveal-mobile__tabs" aria-label="Revealed roll sections">
-      {([ ["roll","Roll"], ["photos","Photos"], ["crew","Crew"], ["awards","Awards"] ] as const).map(([key,label])=><button key={key} type="button" onClick={()=>setRevealTab(key)} aria-current={revealTab===key?"page":undefined} className={revealTab===key?"is-active":""}>{label}</button>)}
+      {([ ["roll","The roll"], ["photos","Photos"], ["crew","People"], ["awards","Awards"] ] as const).map(([key,label])=><button key={key} type="button" onClick={()=>setRevealTab(key)} aria-current={revealTab===key?"page":undefined} className={revealTab===key?"is-active":""}>{label}</button>)}
     </nav>
     <div className={`reveal-mobile__body reveal-mobile__body--${revealTab}`}>
       {revealTab==="roll"&&<section className="reveal-mobile__roll-panel">
@@ -131,10 +131,10 @@ export default function RevealPage() {
         </div>
         {isCloudRoll&&roll.expiresAt?<RollRetention rollId={roll.id} expiresAt={roll.expiresAt} isHost={isHost} compact/>:<p className="reveal-mobile-retention">{isCloudRoll?"This roll is temporary. Photos are kept for 30 days, then held for a 7-day renewal window.":"Demo rolls stay in this browser. Cloud rolls are kept for 30 days after reveal, followed by a 7-day renewal window."}</p>}
         {photos.length>0?<RollExportControls rollName={roll.name} photos={photos} compact/>:<p className="reveal-mobile__empty-save">No photos to save from this roll.</p>}
-        {photos.length>0&&<button type="button" onClick={()=>{setRevealTab("photos");setMobilePhotoIndex(0);}} className="reveal-mobile__start button-primary"><span>START THE REVEAL</span><ArrowUpRight size={15}/></button>}
+        {photos.length>0&&<button type="button" onClick={()=>{setRevealTab("photos");setMobilePhotoIndex(0);}} className="reveal-mobile__start button-primary"><span>let's see the photos</span><ArrowUpRight size={15}/></button>}
       </section>}
       {revealTab==="photos"&&<section className="reveal-mobile__photos-panel" aria-label="Photos organized by contributor">
-        <div className="reveal-mobile__section-heading"><div><p className="eyebrow">IN CHRONOLOGICAL ORDER</p><h2>Photos <span>{photos.length}</span></h2></div>
+        <div className="reveal-mobile__section-heading"><div><p className="eyebrow">THERE YOU ARE</p><h2>Photos <span>{photos.length}</span></h2></div>
           <select aria-label="Show photos from contributor" value={contributorFilter} onChange={(event)=>{setSelected(null);setContributorFilter(event.target.value);setMobilePhotoIndex(0);}}><option value="all">Everyone</option>{contributorGroups.map(({key})=><option key={key} value={key}>{contributorLabels.get(key)??"Friend"}</option>)}</select>
         </div>
         {mobilePhoto?<>
@@ -142,13 +142,13 @@ export default function RevealPage() {
             <span key={mobilePhoto.id} className="reveal-mobile__photo-image"><PhotoImage src={mobilePhoto.src} fallbackSrc={mobilePhoto.cloudinaryOriginalSrc} alt={mobilePhoto.caption||`Photo from ${mobilePhoto.by}`} loading="eager" className="h-full w-full object-contain" style={{filter:legacyFilter(mobilePhoto)}}/></span>
             <span className="reveal-mobile__photo-index">FRAME {String(photos.indexOf(mobilePhoto)+1).padStart(2,"0")} · {formatTime(mobilePhoto.at)}</span>
           </button>
-          <div className="reveal-mobile__photo-caption"><p>{mobilePhoto.caption||"No caption. Just the moment."}</p><span>{mobilePhoto.by} · {formatDate(mobilePhoto.at,{month:"short",day:"numeric"})}</span></div>
+          <div className="reveal-mobile__photo-caption"><p>{mobilePhoto.caption||"No caption, just this."}</p><span>{mobilePhoto.by} · {formatDate(mobilePhoto.at,{month:"short",day:"numeric"})}</span></div>
           <div className="reveal-mobile__photo-controls"><button type="button" onClick={()=>setMobilePhotoIndex((current)=>(current-1+galleryPhotos.length)%galleryPhotos.length)} aria-label="Previous photo"><ChevronLeft size={19}/></button><span className="reveal-mobile__photo-count">{String(mobilePhotoIndex+1).padStart(2,"0")} / {String(galleryPhotos.length).padStart(2,"0")}</span><PhotoDownloadButton photo={mobilePhoto} rollName={roll.name} index={photos.indexOf(mobilePhoto)}/><button type="button" onClick={()=>setMobilePhotoIndex((current)=>(current+1)%galleryPhotos.length)} aria-label="Next photo"><ChevronRight size={19}/></button></div>
         </>:<div className="reveal-mobile__photos-empty"><Camera size={24}/><p>No photos in this roll yet.</p></div>}
       </section>}
       {revealTab==="crew"&&<section className="reveal-mobile__crew-panel" aria-label="Crew">
         {currentCrew?<>
-          <p className="eyebrow">THE PEOPLE BEHIND THE PHOTOS</p>
+          <p className="eyebrow">YOUR USUAL SUSPECTS</p>
           <div className="reveal-mobile__crew-card"><span className="reveal-mobile__avatar">{currentCrew.avatar?<img src={currentCrew.avatar} alt=""/>:currentCrew.initials}</span><h2>{currentCrew.name}</h2><p>{currentCrew.photos.length} {currentCrew.photos.length===1?"photo":"photos"} in this roll</p>
             {currentCrew.photos.length>0&&<div className="reveal-mobile__crew-photos">{currentCrew.photos.slice(0,5).map((photo,index)=><button type="button" key={photo.id} onClick={()=>{setContributorFilter(contributorGroups.find((group)=>group.name===currentCrew.name)?.key??"all");setMobilePhotoIndex(index);setRevealTab("photos");}} aria-label={`View photo ${index+1} from ${currentCrew.name}`}><PhotoImage src={photo.src} thumbnailSrc={photo.thumbnailSrc} alt="" className="h-full w-full object-cover"/></button>)}</div>}
           </div>
@@ -159,23 +159,23 @@ export default function RevealPage() {
     </div>
     {selected!==null&&galleryPhotos.length>0&&<PhotoViewer photos={galleryPhotos} index={selected} rollName={roll.name} close={closeViewer} move={moveViewer}/>}
   </main>;
-  return <main className="reveal-desktop-page mx-auto min-h-screen max-w-[1440px] px-5 pb-20 pt-8 sm:px-10 sm:pt-12 lg:px-16"><div className="reveal-desktop-page__inner mx-auto max-w-[1120px]"><LocalDemoNote/>
-    <Link href={`/rolls/${roll.id}`} className="mt-8 inline-flex items-center gap-2 font-mono text-[10px] tracking-[.12em] text-[#8a8378] hover:text-[#eee9de]"><ArrowLeft size={13}/> BACK TO SESSION</Link>
-    <p className="mt-5 font-display text-2xl leading-tight text-[#ded8cd] sm:text-3xl">{roll.name}</p>
+  return <main className="reveal-desktop-page"><div className="reveal-desktop-page__inner mx-auto max-w-[1120px]">
     <div className="reveal-in reveal-desktop-hero relative isolate mt-7 min-h-[70svh] overflow-hidden border border-white/10 bg-[#191714] p-5 sm:p-9">
       {photos[0]&&<PhotoImage src={photos[0].src} fallbackSrc={photos[0].cloudinaryOriginalSrc} alt="" aria-hidden="true" loading="eager" className="reveal-desktop-hero__image absolute inset-0 h-full w-full object-cover"/>}
       <div className="reveal-desktop-hero__shade absolute inset-0" aria-hidden="true"/>
-      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="eyebrow mb-3">THE WAIT IS OVER <span className="mx-2 text-[#a33a32]">/</span> {formatDate(roll.createdAt).toUpperCase()}</p><h1 className="font-display text-5xl leading-[.92] tracking-[-.06em] sm:text-7xl">The night,<br/><i className="text-[#b54b40]">as it happened.</i></h1></div><div className="flex items-center gap-4"><AvatarStack people={roll.participants}/><div><p className="font-mono text-[10px] text-[#d4cdbf]">{photos.length.toString().padStart(2,"0")} FRAMES</p><p className="mt-1 font-mono text-[8px] tracking-[.12em] text-[#746e64]">{roll.participants.length} PEOPLE WERE THERE</p></div></div></div>
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-white/10 py-3"><ThemeBadge theme={roll.theme}/><p className="font-mono text-[9px] tracking-[.1em] text-[#827b70]">SHOT BY YOUR CREW · IN CHRONOLOGICAL ORDER</p></div>
+      <Link href={`/rolls/${roll.id}`} className="reveal-desktop-back"><ArrowLeft size={15}/> back to the roll</Link>
+      <div className="reveal-desktop-hero__main flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="eyebrow mb-3">IT'S BACK · {formatDate(roll.createdAt,{month:"short",day:"numeric"}).toUpperCase()}</p><h1 className="font-display text-5xl leading-[.92] tracking-[-.06em] sm:text-7xl">Well, that<br/><i className="text-[#b54b40]">was a night.</i></h1><p className="reveal-desktop-hero__roll-name">{roll.name}</p></div><div className="flex items-center gap-4"><AvatarStack people={roll.participants}/><div><p className="font-mono text-[10px] text-[#d4cdbf]">{photos.length} {photos.length===1?"PHOTO":"PHOTOS"}</p><p className="mt-1 font-mono text-[8px] tracking-[.12em] text-[#d1c8b8]">{roll.participants.length} {roll.participants.length===1?"FRIEND":"FRIENDS"} WERE THERE</p></div></div></div>
+      <div className="reveal-desktop-hero__meta mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-white/10 py-3"><ThemeBadge theme={roll.theme}/><p className="font-mono text-[9px] tracking-[.1em] text-[#d5cfc3]">SHOT BY YOUR CREW · IN CHRONOLOGICAL ORDER</p></div>
+      {photos.length>0&&<a href="#roll-photos" className="reveal-desktop-start button-primary mt-5 min-h-12 w-fit px-5 text-xs">show me the photos <ArrowUpRight size={14}/></a>}
     </div>
-    {photos.length>0&&<a href="#roll-photos" className="reveal-desktop-start button-primary mt-5 min-h-12 w-fit px-5 text-xs">START THE REVEAL <ArrowUpRight size={14}/></a>}
+    <LocalDemoNote/>
     {isCloudRoll && roll.expiresAt && <RollRetention rollId={roll.id} expiresAt={roll.expiresAt} isHost={isHost}/>}
     {!isCloudRoll && <div className="mt-5 border border-white/10 bg-white/[.025] p-4 text-xs leading-5 text-[#a49b8d]">Demo rolls stay in this browser. The 30-day cloud retention timer starts when a shared roll is revealed.</div>}
     {photos.length > 0 && <RollExportControls rollName={roll.name} photos={photos}/>}
     <AwardsSection rollId={roll.id} rollName={roll.name} rollDate={roll.createdAt} photos={photos} isCloudRoll={isCloudRoll} isHost={isHost}/>
     {photos.length ? <>
       <div id="roll-photos" className="mt-7 flex flex-col justify-between gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-end">
-        <div><p className="eyebrow flex items-center gap-2"><UsersRound size={13} className="text-[#b54b40]"/> THE PEOPLE BEHIND THE PHOTOS</p><p className="mt-1 text-xs text-[#837c71]">Names and times from your crew, in the order things happened.</p></div>
+        <div><p className="eyebrow flex items-center gap-2"><UsersRound size={13} className="text-[#b54b40]"/> THE WHOLE CREW</p><p className="mt-1 text-xs text-[#837c71]">Every shot, in the order the night happened.</p></div>
         <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Filter photos by contributor" value={contributorFilter} onChange={(event)=>{setSelected(null);setContributorFilter(event.target.value);}} className="min-h-10 border border-white/15 bg-[#191714] px-3 font-mono text-[9px] tracking-[.08em] text-[#d5cfc3]">
             <option value="all">EVERYONE</option>{contributorGroups.map(({key})=><option key={key} value={key}>{(contributorLabels.get(key)??"Friend").toUpperCase()}</option>)}
